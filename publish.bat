@@ -4,8 +4,8 @@ git stash
 
 git branch -D web
 git checkout --orphan web
-git reset --hard
-git add out/*
+rename out docs
+git add docs/*
 git commit -m"update web"
 git push -u origin web --force
 
