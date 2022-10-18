@@ -340,6 +340,9 @@ pub fn run() {
         })
         .insert_resource(WindowDescriptor {
             fit_canvas_to_parent: true,
+            // firefox hack
+            #[cfg(target_arch = "wasm32")]
+            height: 1080.0,
             resizable: true,
             title: "Radiation Simulation".to_owned(),
             ..Default::default()
