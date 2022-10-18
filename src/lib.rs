@@ -95,12 +95,6 @@ fn setup(
 ) {
     // ------ World ------
 
-    // plane
-    commands.spawn_bundle(PbrBundle {
-        mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
-        ..default()
-    });
     // light
     commands.spawn_bundle(PointLightBundle {
         point_light: PointLight {
@@ -166,7 +160,21 @@ fn setup(
         .insert_bundle(PbrBundle {
             material: grey_material.clone(),
             mesh: cube_mesh.clone(),
-            transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.002, 1.0, 2.0)),
+            transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.2, 1.0, 2.0)),
+            ..Default::default()
+        })
+        .insert(Obstacle {
+            material: dense_material(),
+            ..Default::default()
+        });
+
+    commands
+        .spawn()
+        .insert(Name::new("Obstacle 2"))
+        .insert_bundle(PbrBundle {
+            material: grey_material.clone(),
+            mesh: cube_mesh.clone(),
+            transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
             ..Default::default()
         })
         .insert(Obstacle {
