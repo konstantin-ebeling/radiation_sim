@@ -338,6 +338,12 @@ pub fn run() {
             level: bevy::log::Level::INFO,
             filter: "spawn=trace,wgpu_core=warn,wgpu_hal=warn".to_string(),
         })
+        .insert_resource(WindowDescriptor {
+            fit_canvas_to_parent: true,
+            resizable: true,
+            title: "Radiation Simulation".to_owned(),
+            ..Default::default()
+        })
         .insert_resource(ClearColor(Color::rgb(0.8, 0.8, 0.8)))
         .add_plugins(DefaultPlugins)
         .add_system(bevy::window::close_on_esc)
