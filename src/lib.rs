@@ -81,6 +81,10 @@ impl Plugin for RadiationSim {
                 time_step: (10f32).powi(-12),
                 multi_step: 16,
             })
+            .insert_resource(AmbientLight {
+                brightness: 0.1,
+                color: Color::rgb(1.0, 1.0, 1.0)
+            })
             .add_startup_system(setup)
             .add_system(move_camera)
             .add_system(spawn_particles)
@@ -95,14 +99,17 @@ fn setup(
 ) {
     // ------ World ------
 
-    // light
-    commands.spawn_bundle(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
+    let mut light_transform = Transform::from_xyz(0.0, 0.0, 0.0);
+    light_transform.rotate_y(std::f32::consts::PI / -5.0);
+    light_transform.rotate_x(std::f32::consts::PI / -6.0);
+    commands.spawn_bundle( DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            color: Color::rgb(1.0, 1.0, 1.0),
+            illuminance: 5000.0,
             shadows_enabled: true,
-            ..default()
+            ..Default::default()
         },
-        transform: Transform::from_xyz(-4.0, 8.0, 4.0),
+        transform: light_transform,
         ..default()
     });
 
@@ -152,13 +159,14 @@ fn setup(
     // obstacle
 
     let cube_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
-    let grey_material = materials.add(Color::rgb(0.4, 0.4, 0.4).into());
+    let grey_material = materials.add(Color::rgb(0.6, 0.6, 0.6).into());
+    let light_grey_material = materials.add(Color::rgb(0.8, 0.8, 0.8).into());
 
     commands
         .spawn()
         .insert(Name::new("Obstacle 1"))
         .insert_bundle(PbrBundle {
-            material: grey_material.clone(),
+            material: light_grey_material.clone(),
             mesh: cube_mesh.clone(),
             transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.2, 1.0, 2.0)),
             ..Default::default()
@@ -170,7 +178,7 @@ fn setup(
 
     commands
         .spawn()
-        .insert(Name::new("Obstacle 2"))
+        .insert(Name::new("Floor"))
         .insert_bundle(PbrBundle {
             material: grey_material.clone(),
             mesh: cube_mesh.clone(),
@@ -355,7 +363,7 @@ pub fn run() {
             title: "Radiation Simulation".to_owned(),
             ..Default::default()
         })
-        .insert_resource(ClearColor(Color::rgb(0.8, 0.8, 0.8)))
+        .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
         .add_plugins(DefaultPlugins)
         .add_system(bevy::window::close_on_esc)
         .add_plugin(RadiationSim)
