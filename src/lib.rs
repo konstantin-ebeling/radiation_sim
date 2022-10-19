@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::sync::atomic::Ordering;
 
 use bevy::{
@@ -9,6 +9,8 @@ use bevy::{
 
 use atomic_float::AtomicF32;
 
+mod data_reading;
+use data_reading::*;
 mod materials;
 use materials::*;
 mod render;
@@ -61,6 +63,7 @@ struct Velocity(Vec3);
 
 struct Constants {
     light_speed: f32,
+    elements: BTreeMap<usize, Element>,
 }
 struct TimeData {
     time_step: f32,
@@ -76,6 +79,7 @@ impl Plugin for RadiationSim {
             .register_type::<Velocity>()
             .insert_resource(Constants {
                 light_speed: 299_792_458.0,
+                elements: BTreeMap::new()
             })
             .insert_resource(TimeData {
                 time_step: (10f32).powi(-12),
@@ -86,6 +90,7 @@ impl Plugin for RadiationSim {
                 color: Color::rgb(1.0, 1.0, 1.0)
             })
             .add_startup_system(setup)
+            .add_startup_system(read_data)
             .add_system(move_camera)
             .add_system(spawn_particles)
             .add_system(process_particles);
@@ -93,6 +98,7 @@ impl Plugin for RadiationSim {
 }
 
 fn setup(
+    asset_server: Res<AssetServer>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -189,6 +195,23 @@ fn setup(
             material: dense_material(),
             ..Default::default()
         });
+
+    // human
+    commands.spawn_bundle(SceneBundle {
+        scene: asset_server.load("human_model/scene.gltf#Scene0"),
+        transform: Transform::from_xyz(1.5, 0.0, 0.0).with_scale(Vec3::splat(0.3)),
+        ..default()
+    });
+}
+
+fn read_data(mut constants: ResMut<Constants>) {
+    let element_data = get_elemnts();
+    let mut element_hashmap = BTreeMap::new();
+    for element in element_data {
+        element_hashmap.insert(element.z, element);
+    }
+
+    constants.elements = element_hashmap;
 }
 
 fn move_camera(

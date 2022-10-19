@@ -6,13 +6,19 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "radiation_sim_bin"
+path = "src/main.rs"
+
 [dependencies]
 bevy = "0.8"
 bevy_egui = "0.16"
 
-bytemuck = "1.12.1"
-fastrand = "1.8.0"
 atomic_float = "0.1.0"
+bytemuck = "1.12.1"
+csv = "1.1.6"
+fastrand = "1.8.0"
+serde = "1.0.145"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"
