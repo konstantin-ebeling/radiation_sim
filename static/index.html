@@ -26,6 +26,8 @@
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
             z-index: 1;
         }
 
@@ -86,16 +88,17 @@
         }, 100);
     </script>
     <script defer type="module">
-        import init from "./radiation_sim.js";
+        import init from "./radiation_sim_bin.js";
         init();
     </script>
 </head>
 
 <body>
+    <canvas id="maincanvas"></canvas>
     <div id="container">
         <div id="loading">Loading...</div>
         <div class="lds-dual-ring"></div>
-        <div class="construction">Bald verfügbar!</div>
+        <div class="construction">Ab 21.10.2022 verfügbar!</div>
     </div>
 </body>
 
