@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
-use crate::{Constants, InterfaceState};
+use crate::{InterfaceState, Particle, TimeData};
 
 pub struct RadiationSimUI;
 
@@ -15,21 +15,34 @@ impl Plugin for RadiationSimUI {
 
 fn render_ui(
     mut egui_context: ResMut<EguiContext>,
-    constants: Res<Constants>,
+    mut time_data: ResMut<TimeData>,
     mut interface_state: ResMut<InterfaceState>,
+    particle_query: Query<(Entity, &Particle)>,
+    mut commands: Commands,
 ) {
-    egui::Window::new("Simulation von Radioaktivität").show(egui_context.ctx_mut(), |ui| {
+    egui::Window::new("Simulation von Radioaktivität").anchor(egui::Align2::LEFT_TOP, [10.0, 10.0]).show(egui_context.ctx_mut(), |ui| {
         ui.heading("Virtuelle Umgebung");
-        ui.label("Anzahl simulierte Teilchen: 587");
+        ui.label(format!("Anzahl simulierte Teilchen: {}", particle_query.iter().len()));
         ui.label("Anzahl Hindernisse: 1");
-        ui.button("Bearbeiten");
-        ui.button("Simulation pausieren");
+        ui.label("Element der Strahlenquelle: 239Pu");
+        ui.label("Zeit Faktor: 10^-12");
+        if ui.button("Bearbeiten").clicked() {
+            panic!("error editing scene");
+        }
+        if ui.button("Simulation pausieren").clicked() {
+            time_data.time_step_calc = 0.0;
+            time_data.time_step_move = 0.0;
+        }
         ui.separator();
 
         ui.heading("Messwerte");
-        ui.label("Energiedosis: 0,161 mGy");
-        ui.label("Äquivalenzdosis: 0,165 mSv");
-        ui.button("Zurücksetzen");
+        ui.label("Energiedosis: 0 mGy");
+        ui.label("Äquivalenzdosis: 0 mSv");
+        if ui.button("Zurücksetzen").clicked() {
+            particle_query.iter().for_each(|(e, _)| {
+                commands.entity(e).despawn();
+            })
+        }
         ui.separator();
 
         ui.heading("Steuerung");
@@ -46,26 +59,26 @@ fn render_ui(
         }
     });
 
-    egui::Window::new("Elemente").show(egui_context.ctx_mut(), |ui| {
-        for (z, element) in &constants.elements {
-            ui.collapsing(&element.name, |ui| {
-                ui.label(z.to_string());
-                ui.label(&element.symbol);
+    // egui::Window::new("Elemente").show(egui_context.ctx_mut(), |ui| {
+    //     for (z, element) in &constants.elements {
+    //         ui.collapsing(&element.name, |ui| {
+    //             ui.label(z.to_string());
+    //             ui.label(&element.symbol);
 
-                for isotope in &element.isotopes {
-                    ui.label(format!(
-                        "{}{} {}",
-                        element.symbol,
-                        isotope.1.z + isotope.1.n,
-                        match isotope.1.half_life {
-                            Some(half_life) => format!("{}s", half_life),
-                            None => "Stable".to_owned(),
-                        }
-                    ));
-                }
-            });
-        }
-    });
+    //             for isotope in &element.isotopes {
+    //                 ui.label(format!(
+    //                     "{}{} {}",
+    //                     element.symbol,
+    //                     isotope.1.z + isotope.1.n,
+    //                     match isotope.1.half_life {
+    //                         Some(half_life) => format!("{}s", half_life),
+    //                         None => "Stable".to_owned(),
+    //                     }
+    //                 ));
+    //             }
+    //         });
+    //     }
+    // });
 }
 
 fn render_legend(mut egui_context: ResMut<EguiContext>) {

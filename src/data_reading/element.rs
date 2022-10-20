@@ -3,24 +3,11 @@ use std::io::Cursor;
 
 use serde::Deserialize;
 
-use crate::{Constants, ParticleType};
+use crate::{Constants, ParticleType, StoppingPower};
 
-/// (energy in eV, stopping power in eV/m | 1/m)
-pub type StoppingPower = Vec<(f32, f32)>;
+use super::{parse_num, MassAttenuationCoefficientRow, StoppingPowerRow};
 
-pub trait Substance {
-    fn symbol(&self) -> &String;
-    fn name(&self) -> &String;
-    /// in kg/m3
-    fn density(&self) -> f32;
-
-    fn stopping_power(&self, particle_type: &ParticleType) -> &StoppingPower;
-
-    /// if all required info is available for it to absorb radiation
-    fn is_absorber(&self) -> bool;
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Element {
     pub z: usize,
     pub symbol: String,
@@ -36,60 +23,38 @@ pub struct Element {
     pub is_absorber: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Isotope {
     pub z: usize,
     pub n: usize,
     /// in %
-    pub abundance: f32,
+    pub abundance: ordered_float::OrderedFloat<f32>,
     /// in s
-    pub half_life: Option<f32>,
+    pub half_life: Option<ordered_float::OrderedFloat<f32>>,
     /// in u
     pub atomic_mass: f32,
     pub decays: Vec<Decay>,
     /// in Bq/kg
     pub activity: Option<f32>,
+    pub is_usable: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Decay {
     pub decay_type: DecayType,
     /// in eV
     pub decay_energy: f32,
     /// in eV
     pub gamma_energy: Option<f32>,
-    pub is_usable: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DecayType {
     BetaMinus,
     BetaPlus,
     BetaElectronCapture,
     Alpha,
     Other,
-}
-
-impl Substance for Element {
-    fn symbol(&self) -> &String {
-        &self.symbol
-    }
-
-    fn name(&self) -> &String {
-        &self.name
-    }
-
-    fn density(&self) -> f32 {
-        self.density
-    }
-
-    fn stopping_power(&self, particle_type: &ParticleType) -> &StoppingPower {
-        &self.stopping_powers[particle_type]
-    }
-
-    fn is_absorber(&self) -> bool {
-        self.is_absorber
-    }
 }
 
 pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
@@ -130,8 +95,8 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                         Some(Isotope {
                             z: isotope.z,
                             n: isotope.n,
-                            abundance: parse_num(isotope.abundance.as_str()),
-                            half_life,
+                            abundance: ordered_float::OrderedFloat(parse_num(isotope.abundance.as_str())),
+                            half_life: half_life.map(|h| ordered_float::OrderedFloat(h)),
 
                             atomic_mass,
                             decays: vec![Decay {
@@ -151,9 +116,9 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                                         Some(gamma_energy * 1_000_000.0)
                                     }
                                 },
-                                is_usable: decay_energy > 0.1,
                             }],
                             activity,
+                            is_usable: decay_energy > 0.1,
                         })
                     } else {
                         None
@@ -236,9 +201,9 @@ pub struct ElementDataRow {
     pub density: f32,
 }
 
-pub fn get_element_data() -> Vec<ElementDataRow> {
+fn get_element_data() -> Vec<ElementDataRow> {
     let mut data_reader = csv::Reader::from_reader(Cursor::new(include_bytes!(
-        "./../assets/simulation_data/element_data.csv"
+        "./../../assets/simulation_data/element_data.csv"
     )));
     data_reader
         .deserialize()
@@ -273,9 +238,9 @@ pub struct IsotopeDataRow {
     pub massexcess: String,
 }
 
-pub fn get_isotope_data() -> Vec<IsotopeDataRow> {
+fn get_isotope_data() -> Vec<IsotopeDataRow> {
     let mut data_reader = csv::Reader::from_reader(Cursor::new(include_bytes!(
-        "./../assets/simulation_data/isotope_data.csv"
+        "./../../assets/simulation_data/isotope_data.csv"
     )));
     data_reader
         .deserialize()
@@ -283,51 +248,43 @@ pub fn get_isotope_data() -> Vec<IsotopeDataRow> {
         .collect()
 }
 
-#[derive(Debug, Deserialize)]
-pub struct StoppingPowerRow {
-    /// in MeV
-    pub energy: String,
-    /// in MeV cm2/g
-    pub stop_power: String,
-}
-
 // technically this is a mass attenuation coeffients but data reading and storing is similar
 fn get_stopping_power(particle_type: ParticleType) -> HashMap<usize, Vec<(f32, f32)>> {
     #[rustfmt::skip]
     let table_data = match particle_type {
         ParticleType::Alpha => {vec![
-            (1_usize, include_str!("./../assets/simulation_data/stopping_power_alpha/01.csv")),
-            (2, include_str!("./../assets/simulation_data/stopping_power_alpha/02.csv")),
-            (4, include_str!("./../assets/simulation_data/stopping_power_alpha/04.csv")),
-            (6, include_str!("./../assets/simulation_data/stopping_power_alpha/06.csv")),
-            (7, include_str!("./../assets/simulation_data/stopping_power_alpha/07.csv")),
-            (8, include_str!("./../assets/simulation_data/stopping_power_alpha/08.csv")),
-            (10, include_str!("./../assets/simulation_data/stopping_power_alpha/10.csv")),
-            (13, include_str!("./../assets/simulation_data/stopping_power_alpha/13.csv")),
-            (14, include_str!("./../assets/simulation_data/stopping_power_alpha/14.csv")),
-            (18, include_str!("./../assets/simulation_data/stopping_power_alpha/18.csv")),
-            (22, include_str!("./../assets/simulation_data/stopping_power_alpha/22.csv")),
-            (26, include_str!("./../assets/simulation_data/stopping_power_alpha/26.csv")),
-            (29, include_str!("./../assets/simulation_data/stopping_power_alpha/29.csv")),
-            (32, include_str!("./../assets/simulation_data/stopping_power_alpha/32.csv")),
-            (82, include_str!("./../assets/simulation_data/stopping_power_alpha/82.csv")),
+            (1_usize, include_str!("./../../assets/simulation_data/stopping_power_alpha/01.csv")),
+            (2, include_str!("./../../assets/simulation_data/stopping_power_alpha/02.csv")),
+            (4, include_str!("./../../assets/simulation_data/stopping_power_alpha/04.csv")),
+            (6, include_str!("./../../assets/simulation_data/stopping_power_alpha/06.csv")),
+            (7, include_str!("./../../assets/simulation_data/stopping_power_alpha/07.csv")),
+            (8, include_str!("./../../assets/simulation_data/stopping_power_alpha/08.csv")),
+            (10, include_str!("./../../assets/simulation_data/stopping_power_alpha/10.csv")),
+            (13, include_str!("./../../assets/simulation_data/stopping_power_alpha/13.csv")),
+            (14, include_str!("./../../assets/simulation_data/stopping_power_alpha/14.csv")),
+            (18, include_str!("./../../assets/simulation_data/stopping_power_alpha/18.csv")),
+            (22, include_str!("./../../assets/simulation_data/stopping_power_alpha/22.csv")),
+            (26, include_str!("./../../assets/simulation_data/stopping_power_alpha/26.csv")),
+            (29, include_str!("./../../assets/simulation_data/stopping_power_alpha/29.csv")),
+            (32, include_str!("./../../assets/simulation_data/stopping_power_alpha/32.csv")),
+            (82, include_str!("./../../assets/simulation_data/stopping_power_alpha/82.csv")),
         ]}
         ParticleType::Electron => {vec![
-            (1_usize, include_str!("./../assets/simulation_data/stopping_power_electrons/01.csv")),
-            (2, include_str!("./../assets/simulation_data/stopping_power_electrons/02.csv")),
-            (3, include_str!("./../assets/simulation_data/stopping_power_electrons/03.csv")),
-            (4, include_str!("./../assets/simulation_data/stopping_power_electrons/04.csv")),
-            (5, include_str!("./../assets/simulation_data/stopping_power_electrons/05.csv")),
-            (6, include_str!("./../assets/simulation_data/stopping_power_electrons/06.csv")),
-            (7, include_str!("./../assets/simulation_data/stopping_power_electrons/07.csv")),
-            (8, include_str!("./../assets/simulation_data/stopping_power_electrons/08.csv")),
-            (9, include_str!("./../assets/simulation_data/stopping_power_electrons/09.csv")),
-            (10, include_str!("./../assets/simulation_data/stopping_power_electrons/10.csv")),
-            (11, include_str!("./../assets/simulation_data/stopping_power_electrons/11.csv")),
-            (12, include_str!("./../assets/simulation_data/stopping_power_electrons/12.csv")),
-            (13, include_str!("./../assets/simulation_data/stopping_power_electrons/13.csv")),
-            (14, include_str!("./../assets/simulation_data/stopping_power_electrons/14.csv")),
-            (82, include_str!("./../assets/simulation_data/stopping_power_electrons/82.csv")),
+            (1_usize, include_str!("./../../assets/simulation_data/stopping_power_electrons/01.csv")),
+            (2, include_str!("./../../assets/simulation_data/stopping_power_electrons/02.csv")),
+            (3, include_str!("./../../assets/simulation_data/stopping_power_electrons/03.csv")),
+            (4, include_str!("./../../assets/simulation_data/stopping_power_electrons/04.csv")),
+            (5, include_str!("./../../assets/simulation_data/stopping_power_electrons/05.csv")),
+            (6, include_str!("./../../assets/simulation_data/stopping_power_electrons/06.csv")),
+            (7, include_str!("./../../assets/simulation_data/stopping_power_electrons/07.csv")),
+            (8, include_str!("./../../assets/simulation_data/stopping_power_electrons/08.csv")),
+            (9, include_str!("./../../assets/simulation_data/stopping_power_electrons/09.csv")),
+            (10, include_str!("./../../assets/simulation_data/stopping_power_electrons/10.csv")),
+            (11, include_str!("./../../assets/simulation_data/stopping_power_electrons/11.csv")),
+            (12, include_str!("./../../assets/simulation_data/stopping_power_electrons/12.csv")),
+            (13, include_str!("./../../assets/simulation_data/stopping_power_electrons/13.csv")),
+            (14, include_str!("./../../assets/simulation_data/stopping_power_electrons/14.csv")),
+            (82, include_str!("./../../assets/simulation_data/stopping_power_electrons/82.csv")),
         ]}
         _ => panic!("requested stopping power table for not registered particle"),
     };
@@ -354,35 +311,25 @@ fn get_stopping_power(particle_type: ParticleType) -> HashMap<usize, Vec<(f32, f
     stopping_powers
 }
 
-#[derive(Debug, Deserialize)]
-pub struct MassAttenuationCoefficientRow {
-    /// in MeV
-    pub energy: String,
-    /// in cm2/g
-    pub yp: String,
-    /// in cm2/g
-    pub yenp: String,
-}
-
 // technically this is a mass attenuation coeffients but data reading and storing is similar
 fn get_gamma_stopping_power() -> HashMap<usize, Vec<(f32, f32)>> {
     #[rustfmt::skip]
     let table_data = vec![
-        (1_usize, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/01.csv")),
-        (2, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/02.csv")),
-        (3, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/03.csv")),
-        (4, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/04.csv")),
-        (5, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/05.csv")),
-        (6, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/06.csv")),
-        (7, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/07.csv")),
-        (8, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/08.csv")),
-        (9, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/09.csv")),
-        (10, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/10.csv")),
-        (11, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/11.csv")),
-        (12, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/12.csv")),
-        (13, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/13.csv")),
-        (14, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/14.csv")),
-        (82, include_str!("./../assets/simulation_data/mass_attenuation_coefficients/82.csv")),
+        (1_usize, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/01.csv")),
+        (2, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/02.csv")),
+        (3, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/03.csv")),
+        (4, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/04.csv")),
+        (5, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/05.csv")),
+        (6, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/06.csv")),
+        (7, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/07.csv")),
+        (8, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/08.csv")),
+        (9, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/09.csv")),
+        (10, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/10.csv")),
+        (11, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/11.csv")),
+        (12, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/12.csv")),
+        (13, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/13.csv")),
+        (14, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/14.csv")),
+        (82, include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/82.csv")),
     ];
 
     let mut stopping_powers = HashMap::new();
@@ -402,51 +349,4 @@ fn get_gamma_stopping_power() -> HashMap<usize, Vec<(f32, f32)>> {
     }
 
     stopping_powers
-}
-
-
-#[derive(Debug)]
-pub struct Compound {
-    pub symbol: String,
-    pub name: String,
-    /// in kg/m3
-    pub density: f32,
-    pub stopping_powers: HashMap<ParticleType, StoppingPower>,
-
-    pub is_absorber: bool,
-}
-
-impl Substance for Compound {
-    fn symbol(&self) -> &String {
-        &self.symbol
-    }
-
-    fn name(&self) -> &String {
-        &self.name
-    }
-
-    fn density(&self) -> f32 {
-        self.density
-    }
-
-    fn stopping_power(&self, particle_type: &ParticleType) -> &StoppingPower {
-        &self.stopping_powers[particle_type]
-    }
-
-    fn is_absorber(&self) -> bool {
-        self.is_absorber
-    }
-}
-
-/// Parse numbers with scientific notation.
-/// Will never fail, just return 0.
-fn parse_num(num: &str) -> f32 {
-    // scientific notation
-    if !num.contains("E") {
-        return num.parse().unwrap_or_else(|_| 0.0);
-    } else {
-        let num = num.split_once("E").unwrap();
-        return num.0.parse().unwrap_or_else(|_| 0.0)
-            * 10_f32.powi(num.1.parse().unwrap_or_else(|_| 0));
-    }
 }
