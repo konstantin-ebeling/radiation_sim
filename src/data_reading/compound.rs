@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use serde::Deserialize;
 
@@ -18,7 +19,7 @@ pub struct Compound {
     pub is_absorber: bool,
 }
 
-pub fn get_compounds() -> Vec<Compound> {
+pub fn get_compounds() -> Vec<Arc<Compound>> {
     let compound_data = get_compound_data();
 
     let mut alpha_stopping_power = get_stopping_power(ParticleType::Alpha);
@@ -38,8 +39,8 @@ pub fn get_compounds() -> Vec<Compound> {
                 && electron_stopping_power.contains_key(&compound.name)
                 && gamma_stopping_power.contains_key(&compound.name);
 
-            // 1 cm2/g = 0.1 m2/kg
-            // 1 MeV*cm2 = 100_000 eV*m2/kg
+            // 1 cm2/g = 0.1 m2/kg =>
+            // 1 MeV*cm2/g = 100_000 eV*m2/kg
             // 1 eV*m2/kg * 1 kg/m3 = 1 eV/m
             if let Some(a) = alpha_stopping_power.remove(&compound.name) {
                 stopping_powers.insert(
@@ -74,13 +75,13 @@ pub fn get_compounds() -> Vec<Compound> {
                 );
             }
 
-            Compound {
+            Arc::new(Compound {
                 symbol: compound.symbol,
                 name: compound.name,
                 density,
                 stopping_powers,
                 is_absorber,
-            }
+            })
         })
         .collect()
 }
@@ -129,7 +130,13 @@ fn get_stopping_power(particle_type: ParticleType) -> HashMap<String, Vec<(f32, 
             name.to_owned(),
             data_reader
                 .deserialize()
-                .filter_map(|row| row.ok())
+                .filter_map(|row| {
+                    row.map_err(|e| {
+                        log::warn!("Error reading row ({}, a/e): {}", &name, e);
+                        e
+                    })
+                    .ok()
+                })
                 .map(|row: StoppingPowerRow| {
                     (
                         parse_num(row.energy.as_str()),
@@ -159,7 +166,13 @@ fn get_gamma_stopping_power() -> HashMap<String, Vec<(f32, f32)>> {
             name.to_owned(),
             data_reader
                 .deserialize()
-                .filter_map(|row| row.ok())
+                .filter_map(|row| {
+                    row.map_err(|e| {
+                        log::warn!("Error reading row ({}, g): {}", &name, e);
+                        e
+                    })
+                    .ok()
+                })
                 .map(|row: MassAttenuationCoefficientRow| {
                     (parse_num(row.energy.as_str()), parse_num(row.yp.as_str()))
                 })

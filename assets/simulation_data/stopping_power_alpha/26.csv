@@ -1,4 +1,4 @@
-energy,stop+AF8-power,source: https://physics.nist.gov/PhysRefData/Star/Text/ASTAR.html
+energy,stop_power,source: https://physics.nist.gov/PhysRefData/Star/Text/ASTAR.html
 1.00E+AC0-03,8.71E+-01,
 1.50E+AC0-03,9.92E+-01,
 2.00E+AC0-03,1.09E+-02,

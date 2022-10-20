@@ -1,4 +1,4 @@
-energy,stop+AF8-power,source: https://physics.nist.gov/PhysRefData/Star/Text/ESTAR.html
+energy,stop_power,source: https://physics.nist.gov/PhysRefData/Star/Text/ESTAR.html
 0.01,8.45,
 0.0125,7.38,
 0.015,6.59,

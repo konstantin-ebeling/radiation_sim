@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use serde::Deserialize;
 
-use crate::{Constants, ParticleType};
+use crate::ParticleType;
 
 pub mod compound;
 pub mod element;
@@ -13,62 +15,43 @@ pub type StoppingPower = Vec<(f32, f32)>;
 
 #[derive(Debug, Clone)]
 pub enum Substance {
-    Element((Element, usize)),
-    Compound(Compound),
+    Element(Arc<Element>, usize),
+    Compound(Arc<Compound>),
 }
 
 impl Substance {
     pub fn symbol(&self) -> &String {
         match &self {
-            Substance::Element(e) => &e.0.symbol,
+            Substance::Element(e, _) => &e.symbol,
             Substance::Compound(c) => &c.symbol,
         }
     }
     pub fn name(&self) -> &String {
         match &self {
-            Substance::Element(e) => &e.0.name,
+            Substance::Element(e, _) => &e.name,
             Substance::Compound(c) => &c.name,
         }
     }
     /// in kg/m3
     pub fn density(&self) -> f32 {
         match &self {
-            Substance::Element(e) => e.0.density,
+            Substance::Element(e, _) => e.density,
             Substance::Compound(c) => c.density,
         }
     }
 
-    pub fn stopping_power(&self, particle_type: &ParticleType) -> &StoppingPower {
+    pub fn stopping_powers(&self, particle_type: ParticleType) -> Option<&StoppingPower> {
         match &self {
-            Substance::Element(e) => &e.0.stopping_powers[&particle_type],
-            Substance::Compound(c) => &c.stopping_powers[&particle_type],
+            Substance::Element(e, _) => e.stopping_powers.get(&particle_type),
+            Substance::Compound(c) => c.stopping_powers.get(&particle_type),
         }
     }
 
     /// if all required info is available for it to absorb radiation
     pub fn is_absorber(&self) -> bool {
         match &self {
-            Substance::Element(e) => e.0.is_absorber,
+            Substance::Element(e, _) => e.is_absorber,
             Substance::Compound(c) => c.is_absorber,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum SubstanceIdentifier {
-    Element(usize, usize),
-    Compound(String),
-}
-
-impl SubstanceIdentifier {
-    pub fn get(&self, constants: &Constants) -> Substance {
-        match self {
-            SubstanceIdentifier::Element(ref e, n) => {
-                Substance::Element((constants.elements[&e].clone(), n.clone()))
-            }
-            SubstanceIdentifier::Compound(ref name) => {
-                Substance::Compound(constants.compounds[name.as_str()].clone())
-            }
         }
     }
 }

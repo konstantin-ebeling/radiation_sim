@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::Ordering, Arc};
 
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
@@ -9,9 +9,11 @@ use bevy::{
 
 use atomic_float::AtomicF32;
 
+pub mod constants;
+pub use constants::*;
 mod data_reading;
 use data_reading::*;
-mod material;
+pub mod material;
 use material::*;
 mod render;
 mod ui;
@@ -26,7 +28,7 @@ struct Particle {
     pub energy: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Hash, Reflect)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash, Reflect)]
 pub enum ParticleType {
     Alpha,
     Electron,
@@ -52,17 +54,11 @@ struct Object {
 struct Velocity(Vec3);
 
 #[derive(Debug)]
-pub struct Constants {
-    pub light_speed: f32,
-    pub avogadro_constant: f32,
-    pub ev_conversion: f32,
-    pub electron_mass: f32,
-    pub aplha_mass: f32,
-
-    pub elements: BTreeMap<usize, Element>,
-    pub compounds: BTreeMap<String, Compound>,
-    pub radiators: Vec<SubstanceIdentifier>,
-    pub absorbers: Vec<SubstanceIdentifier>,
+pub struct SubstanceData {
+    pub elements: BTreeMap<usize, Arc<Element>>,
+    pub compounds: BTreeMap<String, Arc<Compound>>,
+    pub radiators: Vec<Substance>,
+    pub absorbers: Vec<Substance>,
 }
 
 #[derive(Debug)]
@@ -83,13 +79,7 @@ impl Plugin for RadiationSim {
             .register_type::<Particle>()
             .register_type::<ParticleType>()
             .register_type::<Velocity>()
-            .insert_resource(Constants {
-                light_speed: 299_792_458.0,
-                avogadro_constant: 6.02214076 * (10f32).powi(23),
-                ev_conversion: 1.602 * (10f32).powi(-19),
-                electron_mass: 9.1093837015 * (10f32).powi(-31),
-                aplha_mass: 6.6446573357 * (10f32).powi(-27),
-
+            .insert_resource(SubstanceData {
                 elements: BTreeMap::new(),
                 compounds: BTreeMap::new(),
                 radiators: Vec::new(),
@@ -108,8 +98,8 @@ impl Plugin for RadiationSim {
                 brightness: 0.1,
                 color: Color::rgb(1.0, 1.0, 1.0),
             })
+            .add_startup_system_to_stage(StartupStage::PreStartup, read_data)
             .add_startup_system(setup)
-            .add_startup_system(read_data)
             .add_system(move_camera)
             .add_system(spawn_particles)
             .add_system(process_particles);
@@ -121,6 +111,8 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+
+    substance_data: Res<SubstanceData>,
 ) {
     // ------ World ------
 
@@ -163,7 +155,7 @@ fn setup(
         .spawn()
         .insert(Name::new("Ambient Material"))
         .insert(AmbientMaterial {
-            material: presets::air(),
+            material: presets::air(&substance_data),
         });
 
     // obstacle
@@ -182,7 +174,7 @@ fn setup(
             ..Default::default()
         })
         .insert(Object {
-            material: presets::lead(),
+            material: presets::pb208(&substance_data),
             ..Default::default()
         });
 
@@ -196,7 +188,7 @@ fn setup(
             ..Default::default()
         })
         .insert(Object {
-            material: presets::lead(),
+            material: presets::pb208(&substance_data),
             ..Default::default()
         });
 
@@ -207,7 +199,7 @@ fn setup(
         ..default()
     });
 
-    // spawner (plutonium block)
+    // spawner
 
     commands
         .spawn()
@@ -219,85 +211,83 @@ fn setup(
             ..Default::default()
         })
         .insert(Object {
-            material: presets::plutonium(),
+            material: presets::pu239(&substance_data),
             ..Default::default()
         });
 }
 
-fn read_data(mut constants: ResMut<Constants>) {
+fn read_data(mut substance_data: ResMut<SubstanceData>) {
     // elements
-    let element_data = element::get_elemnts(&constants);
-    let mut element_hashmap = BTreeMap::new();
+    let element_data = element::get_elements();
+    let mut element_btree = BTreeMap::new();
     for element in element_data {
-        element_hashmap.insert(element.z, element);
+        element_btree.insert(element.z, element);
     }
-    constants.elements = element_hashmap;
+    substance_data.elements = element_btree;
 
     let mut radiators = Vec::new();
     let mut absorbers = Vec::new();
-    for (z, element) in &constants.elements {
+    for (_, element) in &substance_data.elements {
         for (n, isotope) in &element.isotopes {
             if isotope.is_usable {
-                radiators.push(SubstanceIdentifier::Element(z.to_owned(), n.to_owned()));
+                radiators.push(Substance::Element(element.clone(), *n));
             }
         }
         if element.is_absorber {
             let mut isotopes_sorted = element.isotopes.clone().into_values().collect::<Vec<_>>();
             isotopes_sorted.sort_by_key(|i| i.abundance);
-            absorbers.push(SubstanceIdentifier::Element(
-                z.to_owned(),
+            absorbers.push(Substance::Element(
+                element.clone(),
                 isotopes_sorted.last().unwrap().n,
             ));
         }
     }
-    constants.radiators = radiators;
-    constants.absorbers = absorbers;
+    substance_data.radiators = radiators;
+    substance_data.absorbers = absorbers;
 
     // compounds
     let compound_data = compound::get_compounds();
-    let mut compound_hashmap = BTreeMap::new();
+    let mut compound_btree = BTreeMap::new();
     for compound in compound_data {
-        compound_hashmap.insert(compound.name.to_owned(), compound);
+        compound_btree.insert(compound.name.to_owned(), compound);
     }
-    constants.compounds = compound_hashmap;
+    substance_data.compounds = compound_btree;
 
     let mut absorbers = Vec::new();
-    for (name, compound) in &constants.compounds {
+    for (_, compound) in &substance_data.compounds {
         if compound.is_absorber {
-            absorbers.push(SubstanceIdentifier::Compound(name.to_owned()));
+            absorbers.push(Substance::Compound(compound.clone()));
         }
     }
-    constants.absorbers.extend(absorbers);
+    substance_data.absorbers.extend(absorbers);
 
     // nice logs
-    for e in &constants.radiators {
+    for e in &substance_data.radiators {
         match &e {
-            SubstanceIdentifier::Element(ref z, ref n) => {
-                let element = &constants.elements[z];
+            Substance::Element(element, n) => {
                 let isotope = &element.isotopes[&n];
                 log::info!(
                     "{} {:?}: {:?} eV, {:?} ev, {} Bq/kg",
                     element.symbol,
-                    z + n,
+                    element.z + n,
                     isotope.decays[0].decay_energy,
                     isotope.decays[0].gamma_energy,
                     isotope.activity.unwrap()
                 );
             }
-            SubstanceIdentifier::Compound(ref name) => {
-                log::info!("{}", &name);
+            Substance::Compound(compound) => {
+                log::info!("{}", &compound.name);
             }
         }
     }
 
-    for e in &constants.absorbers {
+    for e in &substance_data.absorbers {
         match &e {
-            SubstanceIdentifier::Element(ref z, _) => {
-                let element = &constants.elements[z];
+            Substance::Element(element, _) => {
                 log::info!("{} Absorber", element.symbol);
             }
-            SubstanceIdentifier::Compound(ref name) => {
-                log::info!("{} Absorber", &name);
+            Substance::Compound(compound) => {
+                log::info!("{} Absorber", compound.name);
             }
         }
     }
@@ -378,15 +368,14 @@ fn move_camera(
 
 fn spawn_particles(
     time_data: Res<TimeData>,
-    constants: Res<Constants>,
     query: Query<(&Transform, &Object)>,
     mut commands: Commands,
 ) {
     for (transform, object) in query.iter() {
-        let substance = object.material.pick_substance(&constants);
+        let substance = object.material.pick_substance();
 
         match &substance {
-            Substance::Element((element, n)) => {
+            Substance::Element(element, n) => {
                 if element.isotopes[n].is_usable {
                     let volume = transform.scale.x * transform.scale.y * transform.scale.z;
                     let weight = volume * element.density;
@@ -439,11 +428,7 @@ fn spawn_particles(
                             })
                             .insert(Velocity(
                                 velocity_direction
-                                    * energy_to_velocity(
-                                        &decay.decay_energy,
-                                        &particle_type,
-                                        &constants,
-                                    ),
+                                    * energy_to_velocity(&decay.decay_energy, &particle_type),
                             ))
                             .insert_bundle(VisibilityBundle::default());
 
@@ -460,9 +445,7 @@ fn spawn_particles(
                                     energy: gamma_energy,
                                     particle_type: ParticleType::Gamma,
                                 })
-                                .insert(Velocity(
-                                    velocity_direction * (constants.light_speed as f32),
-                                ))
+                                .insert(Velocity(velocity_direction * LIGHT_SPEED))
                                 .insert_bundle(VisibilityBundle::default());
                         }
                     }
@@ -475,7 +458,6 @@ fn spawn_particles(
 
 fn process_particles(
     time_data: Res<TimeData>,
-    constants: Res<Constants>,
 
     ambient_query: Query<&AmbientMaterial>,
     mut query: Query<(Entity, &mut Transform, &mut Velocity, &mut Particle), Without<Object>>,
@@ -495,10 +477,14 @@ fn process_particles(
         |(entity, mut transform, mut velocity, mut particle)| {
             for _ in 0..time_data.multi_step {
                 // move particle
-                transform.translation += velocity.0 * time_data.time_step_move as f32;
+                let move_step = velocity.0 * time_data.time_step_move as f32;
+                transform.translation += move_step;
 
                 // collide particle
-                let mut hit_obstacle = false;
+
+                let mut hit_substance = None;
+                let mut hit_obstacle = None;
+
                 for ((object, obstacle_transform), absorbed_energy) in &objects {
                     let pos = transform.translation;
                     let obs_pos = obstacle_transform.translation;
@@ -512,57 +498,58 @@ fn process_particles(
                         && pos.z > obs_pos.z - obs_scale.z / 2.0
                         && pos.z < obs_pos.z + obs_scale.z / 2.0
                     {
-                        // apply material
+                        let substance = object.material.pick_substance();
+
+                        hit_substance = Some(substance);
+                        hit_obstacle = Some(absorbed_energy);
+                    }
+                }
+
+                if hit_substance.is_none() {
+                    hit_substance = Some(ambient_material.material.pick_substance());
+                }
+
+                // apply material
+                if let Some(substance) = hit_substance {
+                    if let Some(stopping_powers) = substance.stopping_powers(particle.particle_type)
+                    {
                         let energy = match particle.particle_type {
                             ParticleType::Gamma => particle.energy,
                             _ => velocity_to_energy(
                                 &velocity.0.clone().length(),
                                 &particle.particle_type,
-                                &constants,
                             ),
                         };
 
-                        let substance = object.material.pick_substance(&constants);
+                        // MeV/m or 1/m
+                        let stopping_power = pick_stopping_power(stopping_powers, energy);
 
-                        // let stopping_power = pick_stopping_power(
-                        //     &substance.stopping_power(&particle.particle_type),
-                        //     energy,
-                        // );
+                        let energy_transfer = calculate_energy_transfer(
+                            stopping_power,
+                            particle.particle_type,
+                            energy,
+                            move_step.length(),
+                        );
 
-                        let is_spawner = match &substance {
-                            Substance::Element((element, n)) => element.isotopes[n].is_usable,
-                            _ => false,
-                        };
+                        println!(
+                            "{:?} {} {}",
+                            particle.particle_type,
+                            substance.name(),
+                            energy_transfer
+                        );
 
-                        if !is_spawner {
-                            match &particle.particle_type {
-                                ParticleType::Gamma => {
-                                    particle.energy -= 1_000.0;
-                                }
-                                _ => {
-                                    let mut vel = velocity.0.length();
-                                    vel -= 2_000.0;
-                                    velocity.0 = velocity.0.normalize() * vel;
-                                }
+                        // add to obstacle
+                        if let Some(absorbed_energy) = hit_obstacle {
+                            absorbed_energy.fetch_add(energy_transfer, Ordering::Relaxed);
+                        }
+
+                        let new_energy = (energy - energy_transfer).max(0.0);
+
+                        match particle.particle_type {
+                            ParticleType::Gamma => {
+                                particle.energy = new_energy;
                             }
-
-                            // particle.energy -= enery_transfer;
-                            // absorbed_energy.fetch_add(*enery_transfer, Ordering::Relaxed);
-
-                            hit_obstacle = true;
-                        }
-                    }
-                }
-
-                if !hit_obstacle {
-                    match &particle.particle_type {
-                        ParticleType::Gamma => {
-                            particle.energy -= 10.0;
-                        }
-                        _ => {
-                            let mut vel = velocity.0.length();
-                            vel -= 2_000.0;
-                            velocity.0 = velocity.0.normalize() * vel;
+                            _ => {}
                         }
                     }
                 }
@@ -584,31 +571,50 @@ fn process_particles(
 
 fn pick_stopping_power(stopping_powers: &StoppingPower, energy: f32) -> f32 {
     for (stop_energy, stopping_power) in stopping_powers {
-        if *stop_energy < energy {
+        if *stop_energy > energy {
             return *stopping_power;
         }
     }
     return stopping_powers.last().unwrap().1;
 }
 
-fn energy_to_velocity(energy: &f32, particle_type: &ParticleType, constants: &Constants) -> f32 {
+fn energy_to_velocity(energy: &f32, particle_type: &ParticleType) -> f32 {
     // TODO: account for relavistiuc movement (thanks Einstein...)
-    (2.0 * energy * constants.ev_conversion
-        / match particle_type {
-            ParticleType::Alpha => constants.aplha_mass,
-            _ => constants.electron_mass,
-        })
-    .sqrt()
+    let mass = match particle_type {
+        ParticleType::Alpha => *ALPHA_MASS,
+        _ => *ELECTRON_MASS,
+    };
+    (2.0 * energy * *EV_CONVERSION / mass).sqrt()
 }
 
-fn velocity_to_energy(velocity: &f32, particle_type: &ParticleType, constants: &Constants) -> f32 {
+fn velocity_to_energy(velocity: &f32, particle_type: &ParticleType) -> f32 {
     // TODO: account for relavistiuc movement (thanks Einstein...)
-    ((match particle_type {
-        ParticleType::Alpha => constants.aplha_mass,
-        _ => constants.electron_mass,
-    } * velocity.powi(2))
-        / 2.0)
-        / constants.ev_conversion
+    let mass = match particle_type {
+        ParticleType::Alpha => *ALPHA_MASS,
+        _ => *ELECTRON_MASS,
+    };
+    ((mass * velocity.powi(2)) / 2.0) / *EV_CONVERSION
+}
+
+fn calculate_energy_transfer(
+    stopping_power: f32,
+    particle_type: ParticleType,
+    energy: f32,
+    distance: f32,
+) -> f32 {
+    match particle_type {
+        // gammas either are unaffected or completely gone
+        ParticleType::Gamma => {
+            if std::f32::consts::E.powf(-1.0 * stopping_power * distance) < fastrand::f32() {
+                // transfer all energy if "hit"
+                energy
+            } else {
+                // none if no "hit"
+                0.0
+            }
+        }
+        _ => stopping_power * distance,
+    }
 }
 
 pub fn run() {

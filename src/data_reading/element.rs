@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
+use std::sync::Arc;
 
 use serde::Deserialize;
 
-use crate::{Constants, ParticleType, StoppingPower};
+use crate::{constants::*, ParticleType, StoppingPower};
 
 use super::{parse_num, MassAttenuationCoefficientRow, StoppingPowerRow};
 
@@ -57,7 +58,7 @@ pub enum DecayType {
     Other,
 }
 
-pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
+pub fn get_elements() -> Vec<Arc<Element>> {
     let element_data = get_element_data();
     let isotope_data = get_isotope_data();
 
@@ -65,7 +66,7 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
     let mut electron_stopping_power = get_stopping_power(ParticleType::Electron);
     let mut gamma_stopping_power = get_gamma_stopping_power();
 
-    let activity_constant = constants.avogadro_constant * 2f32.log(std::f32::consts::E);
+    let activity_constant = *AVOGADRO_CONSTANT * 2f32.log(std::f32::consts::E);
 
     element_data
         .into_iter()
@@ -95,7 +96,9 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                         Some(Isotope {
                             z: isotope.z,
                             n: isotope.n,
-                            abundance: ordered_float::OrderedFloat(parse_num(isotope.abundance.as_str())),
+                            abundance: ordered_float::OrderedFloat(parse_num(
+                                isotope.abundance.as_str(),
+                            )),
                             half_life: half_life.map(|h| ordered_float::OrderedFloat(h)),
 
                             atomic_mass,
@@ -138,8 +141,8 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                 && electron_stopping_power.contains_key(&element.z)
                 && gamma_stopping_power.contains_key(&element.z);
 
-            // 1 cm2/g = 0.1 m2/kg
-            // 1 MeV*cm2 = 100_000 eV*m2/kg
+            // 1 cm2/g = 0.1 m2/kg =>
+            // 1 MeV*cm2/g = 100_000 eV*m2/kg
             // 1 eV*m2/kg * 1 kg/m3 = 1 eV/m
             if let Some(a) = alpha_stopping_power.remove(&element.z) {
                 stopping_powers.insert(
@@ -161,6 +164,7 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                         .collect(),
                 );
             }
+
             // 1 cm2/g = 0.1 m2/kg
             // 1 m2/kg * 1 kg/m3 = 1/m
             if let Some(g) = gamma_stopping_power.remove(&element.z) {
@@ -174,7 +178,7 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                 );
             }
 
-            Element {
+            Arc::new(Element {
                 z: element.z,
                 symbol: element.symbol,
                 name: element.name,
@@ -184,7 +188,7 @@ pub fn get_elemnts(constants: &Constants) -> Vec<Element> {
                 isotopes,
                 stopping_powers,
                 is_absorber,
-            }
+            })
         })
         .collect()
 }
@@ -297,7 +301,13 @@ fn get_stopping_power(particle_type: ParticleType) -> HashMap<usize, Vec<(f32, f
             z,
             data_reader
                 .deserialize()
-                .filter_map(|row| row.ok())
+                .filter_map(|row| {
+                    row.map_err(|e| {
+                        log::warn!("Error reading row ({}, a/e): {}", z, e);
+                        e
+                    })
+                    .ok()
+                })
                 .map(|row: StoppingPowerRow| {
                     (
                         parse_num(row.energy.as_str()),
@@ -340,7 +350,13 @@ fn get_gamma_stopping_power() -> HashMap<usize, Vec<(f32, f32)>> {
             z,
             data_reader
                 .deserialize()
-                .filter_map(|row| row.ok())
+                .filter_map(|row| {
+                    row.map_err(|e| {
+                        log::warn!("Error reading row({}, g): {}", z, e);
+                        e
+                    })
+                    .ok()
+                })
                 .map(|row: MassAttenuationCoefficientRow| {
                     (parse_num(row.energy.as_str()), parse_num(row.yp.as_str()))
                 })

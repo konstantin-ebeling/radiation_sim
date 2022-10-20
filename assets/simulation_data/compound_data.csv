@@ -1,3 +1,3 @@
-symbol,name,nucleon+AF8-ratio,energy,density
+symbol,name,nucleon_ratio,energy,density
 O2,Air,0.49919,85.7,0.00121
 H2O,Water,0.55508,75,1
