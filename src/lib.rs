@@ -23,7 +23,7 @@ pub struct RadiationSim;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Default, Component, Reflect)]
 #[reflect(Component)]
-struct Particle {
+pub struct Particle {
     pub particle_type: ParticleType,
     pub energy: f32,
 }
@@ -39,19 +39,24 @@ pub enum ParticleType {
 }
 
 #[derive(Debug, Clone, Component)]
-struct AmbientMaterial {
+pub struct AmbientMaterial {
     pub material: MaterialData,
 }
 
 #[derive(Debug, Clone, Default, Component)]
-struct Object {
+pub struct Object {
     pub material: MaterialData,
     pub absorbed_energy: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Component, Reflect)]
 #[reflect(Component)]
-struct Velocity(Vec3);
+pub struct Velocity(Vec3);
+
+#[derive(Debug, Component)]
+pub struct Human;
+#[derive(Debug, Component)]
+pub struct HumanRoot;
 
 #[derive(Debug)]
 pub struct SubstanceData {
@@ -62,14 +67,22 @@ pub struct SubstanceData {
 }
 
 #[derive(Debug)]
-struct TimeData {
+pub struct TimeData {
     time_step_move: f32,
     time_step_calc: f32,
     multi_step: usize,
+    halted: bool,
 }
 
-struct InterfaceState {
+pub struct InterfaceState {
     advanced: bool,
+    edit_objects: bool,
+}
+
+pub struct AssetHandles {
+    cube_mesh: Option<Handle<Mesh>>,
+    grey_material: Option<Handle<StandardMaterial>>,
+    light_grey_material: Option<Handle<StandardMaterial>>,
 }
 
 impl Plugin for RadiationSim {
@@ -89,10 +102,17 @@ impl Plugin for RadiationSim {
                 time_step_move: (10f32).powi(-12),
                 time_step_calc: (10f32).powi(-11),
                 multi_step: 16,
+                halted: false,
             })
             .insert_resource(InterfaceState {
                 // in debug builds show advanced default
                 advanced: cfg!(debug_assertions),
+                edit_objects: cfg!(debug_assertions),
+            })
+            .insert_resource(AssetHandles {
+                cube_mesh: None,
+                grey_material: None,
+                light_grey_material: None,
             })
             .insert_resource(AmbientLight {
                 brightness: 0.1,
@@ -111,6 +131,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut asset_handles: ResMut<AssetHandles>,
 
     substance_data: Res<SubstanceData>,
 ) {
@@ -151,25 +172,25 @@ fn setup(
 
     // ambient material
 
-    commands
-        .spawn()
-        .insert(Name::new("Ambient Material"))
-        .insert(AmbientMaterial {
-            material: presets::air(&substance_data),
-        });
+    commands.spawn().insert(AmbientMaterial {
+        material: presets::air(&substance_data),
+    });
 
-    // obstacle
+    // obstacles
 
     let cube_mesh = meshes.add(Mesh::from(shape::Cube { size: 1.0 }));
+    asset_handles.cube_mesh = Some(cube_mesh);
     let grey_material = materials.add(Color::rgb(0.6, 0.6, 0.6).into());
+    asset_handles.grey_material = Some(grey_material);
     let light_grey_material = materials.add(Color::rgb(0.8, 0.8, 0.8).into());
+    asset_handles.light_grey_material = Some(light_grey_material);
 
     commands
         .spawn()
-        .insert(Name::new("Obstacle 1"))
+        .insert(Name::new("Wand"))
         .insert_bundle(PbrBundle {
-            material: light_grey_material.clone(),
-            mesh: cube_mesh.clone(),
+            material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.2, 1.0, 2.0)),
             ..Default::default()
         })
@@ -180,10 +201,10 @@ fn setup(
 
     commands
         .spawn()
-        .insert(Name::new("Floor"))
+        .insert(Name::new("Boden"))
         .insert_bundle(PbrBundle {
-            material: grey_material.clone(),
-            mesh: cube_mesh.clone(),
+            material: asset_handles.grey_material.as_ref().unwrap().clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
             ..Default::default()
         })
@@ -192,27 +213,59 @@ fn setup(
             ..Default::default()
         });
 
-    // human
-    commands.spawn_bundle(SceneBundle {
-        scene: asset_server.load("human_model/scene.gltf#Scene0"),
-        transform: Transform::from_xyz(1.5, 0.0, 0.0).with_scale(Vec3::splat(0.3)),
-        ..default()
-    });
-
     // spawner
 
     commands
         .spawn()
-        .insert(Name::new("Spawner"))
+        .insert(Name::new("Strahlenquelle"))
         .insert_bundle(PbrBundle {
-            material: light_grey_material.clone(),
-            mesh: cube_mesh.clone(),
+            material: asset_handles.grey_material.as_ref().unwrap().clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, 0.1, 0.0).with_scale(Vec3::new(0.2, 0.2, 0.2)),
             ..Default::default()
         })
         .insert(Object {
             material: presets::pu239(&substance_data),
             ..Default::default()
+        });
+
+    // human
+    commands
+        .spawn_bundle(SceneBundle {
+            scene: asset_server.load("human_model/scene.gltf#Scene0"),
+            transform: Transform::from_xyz(1.5, 0.0, 0.0).with_scale(Vec3::splat(0.3)),
+            ..default()
+        })
+        .insert(Human)
+        .insert(HumanRoot)
+        .add_children(|parent| {
+            parent
+                .spawn()
+                .insert(Name::new("Main Body"))
+                .insert_bundle(TransformBundle {
+                    local: Transform::from_xyz(-0.04, 1.7, 0.0)
+                        .with_scale(Vec3::new(0.5, 3.3, 0.4)),
+                    ..Default::default()
+                })
+                .insert(Object {
+                    material: presets::water(&substance_data),
+                    ..Default::default()
+                })
+                .insert(Human);
+
+            parent
+                .spawn()
+                .insert(Name::new("Arms"))
+                .insert_bundle(TransformBundle {
+                    local: Transform::from_xyz(-0.04, 2.55, 0.0)
+                        .with_scale(Vec3::new(2.8, 0.2, 0.2)),
+                    ..Default::default()
+                })
+                .insert(Object {
+                    material: presets::water(&substance_data),
+                    ..Default::default()
+                })
+                .insert(Human);
         });
 }
 
@@ -371,6 +424,10 @@ fn spawn_particles(
     query: Query<(&Transform, &Object)>,
     mut commands: Commands,
 ) {
+    if time_data.halted {
+        return;
+    }
+
     for (transform, object) in query.iter() {
         let substance = object.material.pick_substance();
 
@@ -428,7 +485,7 @@ fn spawn_particles(
                             })
                             .insert(Velocity(
                                 velocity_direction
-                                    * energy_to_velocity(&decay.decay_energy, &particle_type),
+                                    * energy_to_velocity(decay.decay_energy, particle_type),
                             ))
                             .insert_bundle(VisibilityBundle::default());
 
@@ -465,6 +522,10 @@ fn process_particles(
 
     par_commands: ParallelCommands,
 ) {
+    if time_data.halted {
+        return;
+    }
+
     let ambient_material = ambient_query.iter().next().unwrap();
 
     let objects = object_query
@@ -516,8 +577,8 @@ fn process_particles(
                         let energy = match particle.particle_type {
                             ParticleType::Gamma => particle.energy,
                             _ => velocity_to_energy(
-                                &velocity.0.clone().length(),
-                                &particle.particle_type,
+                                velocity.0.clone().length(),
+                                particle.particle_type,
                             ),
                         };
 
@@ -531,16 +592,16 @@ fn process_particles(
                             move_step.length(),
                         );
 
-                        println!(
-                            "{:?} {} {}",
-                            particle.particle_type,
-                            substance.name(),
-                            energy_transfer
-                        );
-
                         // add to obstacle
                         if let Some(absorbed_energy) = hit_obstacle {
-                            absorbed_energy.fetch_add(energy_transfer, Ordering::Relaxed);
+                            absorbed_energy.fetch_add(
+                                // account for equivalent dose
+                                match particle.particle_type {
+                                    ParticleType::Alpha => energy_transfer * 20.0,
+                                    _ => energy_transfer,
+                                },
+                                Ordering::Relaxed,
+                            );
                         }
 
                         let new_energy = (energy - energy_transfer).max(0.0);
@@ -549,12 +610,15 @@ fn process_particles(
                             ParticleType::Gamma => {
                                 particle.energy = new_energy;
                             }
-                            _ => {}
+                            _ => {
+                                velocity.0 = velocity.0.normalize()
+                                    * energy_to_velocity(new_energy, particle.particle_type)
+                            }
                         }
                     }
                 }
 
-                if particle.energy < 0.0 || velocity.0.length() < 20_000.0 {
+                if particle.energy < 0.1 || velocity.0.length() < 0.1 {
                     par_commands.command_scope(|mut commands| {
                         commands.entity(entity).despawn();
                     });
@@ -578,7 +642,7 @@ fn pick_stopping_power(stopping_powers: &StoppingPower, energy: f32) -> f32 {
     return stopping_powers.last().unwrap().1;
 }
 
-fn energy_to_velocity(energy: &f32, particle_type: &ParticleType) -> f32 {
+fn energy_to_velocity(energy: f32, particle_type: ParticleType) -> f32 {
     // TODO: account for relavistiuc movement (thanks Einstein...)
     let mass = match particle_type {
         ParticleType::Alpha => *ALPHA_MASS,
@@ -587,7 +651,7 @@ fn energy_to_velocity(energy: &f32, particle_type: &ParticleType) -> f32 {
     (2.0 * energy * *EV_CONVERSION / mass).sqrt()
 }
 
-fn velocity_to_energy(velocity: &f32, particle_type: &ParticleType) -> f32 {
+fn velocity_to_energy(velocity: f32, particle_type: ParticleType) -> f32 {
     // TODO: account for relavistiuc movement (thanks Einstein...)
     let mass = match particle_type {
         ParticleType::Alpha => *ALPHA_MASS,
@@ -595,6 +659,18 @@ fn velocity_to_energy(velocity: &f32, particle_type: &ParticleType) -> f32 {
     };
     ((mass * velocity.powi(2)) / 2.0) / *EV_CONVERSION
 }
+
+// fn test() {
+//     let energy = 1_000_000.0;
+
+//     let velocity = energy_to_velocity(energy, ParticleType::Alpha);
+//     dbg!(velocity);
+//     let new_energy = velocity_to_energy(velocity, ParticleType::Alpha);
+//     dbg!(new_energy);
+
+//     dbg!(velocity_to_energy(0.0, ParticleType::Alpha));
+//     dbg!(energy_to_velocity(0.0, ParticleType::Alpha));
+// }
 
 fn calculate_energy_transfer(
     stopping_power: f32,
@@ -626,6 +702,7 @@ pub fn run() {
         .insert_resource(WindowDescriptor {
             fit_canvas_to_parent: true,
             resizable: true,
+            #[cfg(not(debug_assertions))]
             canvas: Some("#maincanvas".to_owned()),
             title: "Radiation Simulation".to_owned(),
             ..Default::default()

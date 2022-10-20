@@ -27,8 +27,13 @@ pub fn pu239(data: &SubstanceData) -> MaterialData {
 }
 
 pub fn air(data: &SubstanceData) -> MaterialData {
-    dbg!(&data.compounds);
     MaterialData {
         parts: vec![(1.0, Substance::Compound(data.compounds[&"Air".to_owned()].clone()))],
+    }
+}
+
+pub fn water(data: &SubstanceData) -> MaterialData {
+    MaterialData {
+        parts: vec![(1.0, Substance::Compound(data.compounds[&"Water".to_owned()].clone()))],
     }
 }
