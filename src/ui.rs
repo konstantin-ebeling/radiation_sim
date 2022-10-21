@@ -3,7 +3,7 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 use crate::{
     presets, AssetHandles, Human, HumanRoot, InterfaceState, Object, Particle, SubstanceData,
-    TimeData,
+    TimeData, EV_CONVERSION,
 };
 
 pub struct RadiationSimUI;
@@ -23,7 +23,11 @@ fn render_main_ui(
     mut interface_state: ResMut<InterfaceState>,
 
     particle_query: Query<(Entity, &Particle)>,
-    mut object_query: Query<&mut Object>,
+    // first for measurements, second for reset
+    mut set: ParamSet<(
+        Query<(&Object, &Transform), With<Human>>,
+        Query<&mut Object>,
+    )>,
 
     mut commands: Commands,
 ) {
@@ -57,14 +61,21 @@ fn render_main_ui(
         ui.separator();
 
         ui.heading("Messwerte");
-        ui.label("Energiedosis: 0 mGy");
-        ui.label("Äquivalenzdosis: 0 mSv");
+
+        let equivalent_dose: f32 = set.p0().iter().map(|(object, transform)| {
+            // calculate equivalent dose for the current human body estimation
+            let volume = transform.scale.x * transform.scale.y * transform.scale.z;
+            let weight = object.material.average_density() * volume;
+            object.absorbed_energy * *EV_CONVERSION / weight
+        }).sum();
+
+        ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
         if ui.button("Zurücksetzen").clicked() {
             particle_query.iter().for_each(|(e, _)| {
                 commands.entity(e).despawn();
             });
 
-            object_query.iter_mut().for_each(|mut object| {
+            set.p1().iter_mut().for_each(|mut object| {
                 object.absorbed_energy = 0.0;
             });
         }
@@ -144,7 +155,7 @@ fn render_object_editor(
 
                     position_editor(ui, &mut transform);
 
-                    ui.label("Größe (x, y, z)");
+                    ui.label("Größe (m) (x, y, z)");
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::DragValue::new(&mut transform.scale.x)
@@ -182,7 +193,7 @@ fn render_object_editor(
                     .spawn()
                     .insert(Name::new(format!("Objekt {}", i)))
                     .insert_bundle(PbrBundle {
-                        material: asset_handles.grey_material.as_ref().unwrap().clone(),
+                        material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
                         mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
                         transform: Transform::from_xyz(0.0, 0.0, 0.0)
                             .with_scale(Vec3::new(1.0, 1.0, 1.0)),
@@ -204,7 +215,7 @@ fn render_object_editor(
 }
 
 fn position_editor(ui: &mut egui::Ui, transform: &mut Transform) {
-    ui.label("Position (x, y, z)");
+    ui.label("Position (m) (x, y, z)");
     ui.horizontal(|ui| {
         ui.add(
             egui::DragValue::new(&mut transform.translation.x)

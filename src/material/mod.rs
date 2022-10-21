@@ -22,4 +22,11 @@ impl MaterialData {
             i += 1;
         }
     }
+
+    pub fn average_density(&self) -> f32 {
+        self.parts
+            .iter()
+            .map(|(amount, substance)| substance.density() * amount)
+            .sum()
+    }
 }

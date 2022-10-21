@@ -191,7 +191,7 @@ fn setup(
         .insert_bundle(PbrBundle {
             material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
-            transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.2, 1.0, 2.0)),
+            transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.01, 2.0, 2.0)),
             ..Default::default()
         })
         .insert(Object {
@@ -219,7 +219,7 @@ fn setup(
         .spawn()
         .insert(Name::new("Strahlenquelle"))
         .insert_bundle(PbrBundle {
-            material: asset_handles.grey_material.as_ref().unwrap().clone(),
+            material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, 0.1, 0.0).with_scale(Vec3::new(0.2, 0.2, 0.2)),
             ..Default::default()
@@ -232,8 +232,8 @@ fn setup(
     // human
     commands
         .spawn_bundle(SceneBundle {
-            scene: asset_server.load("human_model/scene.gltf#Scene0"),
-            transform: Transform::from_xyz(1.5, 0.0, 0.0).with_scale(Vec3::splat(0.3)),
+            scene: asset_server.load("human_model/human.glb#Scene0"),
+            transform: Transform::from_xyz(2.0, 0.0, 0.0),
             ..default()
         })
         .insert(Human)
@@ -243,8 +243,7 @@ fn setup(
                 .spawn()
                 .insert(Name::new("Main Body"))
                 .insert_bundle(TransformBundle {
-                    local: Transform::from_xyz(-0.04, 1.7, 0.0)
-                        .with_scale(Vec3::new(0.5, 3.3, 0.4)),
+                    local: Transform::from_xyz(0.0, 0.9, 0.0).with_scale(Vec3::new(0.27, 1.8, 0.2)),
                     ..Default::default()
                 })
                 .insert(Object {
@@ -257,8 +256,7 @@ fn setup(
                 .spawn()
                 .insert(Name::new("Arms"))
                 .insert_bundle(TransformBundle {
-                    local: Transform::from_xyz(-0.04, 2.55, 0.0)
-                        .with_scale(Vec3::new(2.8, 0.2, 0.2)),
+                    local: Transform::from_xyz(0.0, 1.37, 0.0).with_scale(Vec3::new(1.7, 0.1, 0.1)),
                     ..Default::default()
                 })
                 .insert(Object {
@@ -421,94 +419,97 @@ fn move_camera(
 
 fn spawn_particles(
     time_data: Res<TimeData>,
-    query: Query<(&Transform, &Object)>,
+    query: Query<(&Transform, &GlobalTransform, &Object)>,
     mut commands: Commands,
 ) {
     if time_data.halted {
         return;
     }
 
-    for (transform, object) in query.iter() {
+    for (transform, global_transform, object) in query.iter() {
         let substance = object.material.pick_substance();
 
-        match &substance {
-            Substance::Element(element, n) => {
-                if element.isotopes[n].is_usable {
-                    let volume = transform.scale.x * transform.scale.y * transform.scale.z;
-                    let weight = volume * element.density;
-                    let estimated_decays =
-                        element.isotopes[n].activity.unwrap() * weight * time_data.time_step_calc;
+        for _ in 0..time_data.multi_step {
+            match &substance {
+                Substance::Element(element, n) => {
+                    if element.isotopes[n].is_usable {
+                        let volume = transform.scale.x * transform.scale.y * transform.scale.z;
+                        let weight = volume * element.density;
+                        let estimated_decays = element.isotopes[n].activity.unwrap()
+                            * weight
+                            * time_data.time_step_calc;
 
-                    let decays = estimated_decays.floor() as usize
-                        + if (estimated_decays - estimated_decays.floor()) > fastrand::f32() {
-                            1
-                        } else {
-                            0
-                        };
+                        let decays = estimated_decays.floor() as usize
+                            + if (estimated_decays - estimated_decays.floor()) > fastrand::f32() {
+                                1
+                            } else {
+                                0
+                            };
 
-                    for _ in 0..decays {
-                        let velocity_direction = Vec3::new(
-                            fastrand::f32() - 0.5,
-                            fastrand::f32() - 0.5,
-                            fastrand::f32() - 0.5,
-                        )
-                        .normalize();
+                        for _ in 0..decays {
+                            let velocity_direction = Vec3::new(
+                                fastrand::f32() - 0.5,
+                                fastrand::f32() - 0.5,
+                                fastrand::f32() - 0.5,
+                            )
+                            .normalize();
 
-                        let pos_offset = Vec3::new(
-                            transform.scale.x * (fastrand::f32() - 0.5),
-                            transform.scale.y * (fastrand::f32() - 0.5),
-                            transform.scale.z * (fastrand::f32() - 0.5),
-                        );
+                            let pos_offset = Vec3::new(
+                                transform.scale.x * (fastrand::f32() - 0.5),
+                                transform.scale.y * (fastrand::f32() - 0.5),
+                                transform.scale.z * (fastrand::f32() - 0.5),
+                            );
 
-                        let decay = &element.isotopes[n].decays[0];
+                            let decay = &element.isotopes[n].decays[0];
 
-                        let particle_type = match decay.decay_type {
-                            element::DecayType::Alpha => ParticleType::Alpha,
-                            element::DecayType::BetaElectronCapture => ParticleType::Electron,
-                            element::DecayType::BetaMinus => ParticleType::Electron,
-                            element::DecayType::BetaPlus => ParticleType::Electron,
-                            _ => panic!("incorrect decay type"),
-                        };
+                            let particle_type = match decay.decay_type {
+                                element::DecayType::Alpha => ParticleType::Alpha,
+                                element::DecayType::BetaElectronCapture => ParticleType::Electron,
+                                element::DecayType::BetaMinus => ParticleType::Electron,
+                                element::DecayType::BetaPlus => ParticleType::Electron,
+                                _ => panic!("incorrect decay type"),
+                            };
 
-                        // spawn particle
-                        commands
-                            .spawn()
-                            .insert_bundle(TransformBundle::from_transform(
-                                Transform::from_translation(
-                                    transform.clone().translation + pos_offset,
-                                ),
-                            ))
-                            .insert(Particle {
-                                // these have energy as velocity
-                                energy: 0.0,
-                                particle_type: particle_type.clone(),
-                            })
-                            .insert(Velocity(
-                                velocity_direction
-                                    * energy_to_velocity(decay.decay_energy, particle_type),
-                            ))
-                            .insert_bundle(VisibilityBundle::default());
-
-                        // spawn gamma ray
-                        if let Some(gamma_energy) = decay.gamma_energy {
+                            // spawn particle
                             commands
                                 .spawn()
                                 .insert_bundle(TransformBundle::from_transform(
                                     Transform::from_translation(
-                                        transform.clone().translation + pos_offset,
+                                        global_transform.translation() + pos_offset,
                                     ),
                                 ))
                                 .insert(Particle {
-                                    energy: gamma_energy,
-                                    particle_type: ParticleType::Gamma,
+                                    // these have energy as velocity
+                                    energy: 0.0,
+                                    particle_type: particle_type.clone(),
                                 })
-                                .insert(Velocity(velocity_direction * LIGHT_SPEED))
+                                .insert(Velocity(
+                                    velocity_direction
+                                        * energy_to_velocity(decay.decay_energy, particle_type),
+                                ))
                                 .insert_bundle(VisibilityBundle::default());
+
+                            // spawn gamma ray
+                            if let Some(gamma_energy) = decay.gamma_energy {
+                                commands
+                                    .spawn()
+                                    .insert_bundle(TransformBundle::from_transform(
+                                        Transform::from_translation(
+                                            transform.clone().translation + pos_offset,
+                                        ),
+                                    ))
+                                    .insert(Particle {
+                                        energy: gamma_energy,
+                                        particle_type: ParticleType::Gamma,
+                                    })
+                                    .insert(Velocity(velocity_direction * LIGHT_SPEED))
+                                    .insert_bundle(VisibilityBundle::default());
+                            }
                         }
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
@@ -518,7 +519,7 @@ fn process_particles(
 
     ambient_query: Query<&AmbientMaterial>,
     mut query: Query<(Entity, &mut Transform, &mut Velocity, &mut Particle), Without<Object>>,
-    mut object_query: Query<(&mut Object, &Transform), Without<Particle>>,
+    mut object_query: Query<(&mut Object, &Transform, &GlobalTransform), Without<Particle>>,
 
     par_commands: ParallelCommands,
 ) {
@@ -546,18 +547,20 @@ fn process_particles(
                 let mut hit_substance = None;
                 let mut hit_obstacle = None;
 
-                for ((object, obstacle_transform), absorbed_energy) in &objects {
-                    let pos = transform.translation;
-                    let obs_pos = obstacle_transform.translation;
-                    let obs_scale = obstacle_transform.scale;
+                for ((object, object_transform, object_global_transform), absorbed_energy) in
+                    &objects
+                {
+                    let par_pos = transform.translation;
+                    let obj_pos = object_global_transform.translation();
+                    let obj_scale = object_transform.scale;
 
                     // check for hit
-                    if pos.x > obs_pos.x - obs_scale.x / 2.0
-                        && pos.x < obs_pos.x + obs_scale.x / 2.0
-                        && pos.y > obs_pos.y - obs_scale.y / 2.0
-                        && pos.y < obs_pos.y + obs_scale.y / 2.0
-                        && pos.z > obs_pos.z - obs_scale.z / 2.0
-                        && pos.z < obs_pos.z + obs_scale.z / 2.0
+                    if par_pos.x > obj_pos.x - obj_scale.x / 2.0
+                        && par_pos.x < obj_pos.x + obj_scale.x / 2.0
+                        && par_pos.y > obj_pos.y - obj_scale.y / 2.0
+                        && par_pos.y < obj_pos.y + obj_scale.y / 2.0
+                        && par_pos.z > obj_pos.z - obj_scale.z / 2.0
+                        && par_pos.z < obj_pos.z + obj_scale.z / 2.0
                     {
                         let substance = object.material.pick_substance();
 
@@ -628,7 +631,7 @@ fn process_particles(
         },
     );
 
-    for ((mut obstacle, _), absorbed_energy) in objects {
+    for ((mut obstacle, _, _), absorbed_energy) in objects {
         obstacle.absorbed_energy += absorbed_energy.load(Ordering::Relaxed);
     }
 }
