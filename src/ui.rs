@@ -175,8 +175,68 @@ fn render_object_editor(
                         );
                     });
 
-                    ui.label("Material");
-                    ui.label(format!("{:?}", object.material.parts[0].1.name()));
+                    ui.collapsing("Material", |ui| {
+                        let len = object.material.parts.len();
+                        let mut to_remove = None;
+                        for (i, (ratio, substance)) in
+                            &mut object.material.parts.iter_mut().enumerate()
+                        {
+                            egui::ComboBox::from_label(format!("Material Typ {}", i))
+                                .selected_text(format!("{}", substance))
+                                .show_ui(ui, |ui| {
+                                    for new_substance in &substance_data.absorbers {
+                                        ui.selectable_value(
+                                            substance,
+                                            new_substance.to_owned(),
+                                            format!("{}", new_substance),
+                                        );
+                                    }
+                                    for new_substance in &substance_data.radiators {
+                                        ui.selectable_value(
+                                            substance,
+                                            new_substance.to_owned(),
+                                            format!("{}", new_substance),
+                                        );
+                                    }
+                                });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Anteil:");
+                                ui.add(
+                                    egui::DragValue::new(ratio)
+                                        .clamp_range(0.01..=1.0)
+                                        .speed(0.05),
+                                );
+                            });
+
+                            if len > 1 {
+                                if ui.button("Entfernen").clicked() {
+                                    to_remove = Some(i);
+                                }
+                            }
+
+                            ui.label("");
+                        }
+                        if let Some(i) = to_remove {
+                            object.material.parts.remove(i);
+                        }
+
+                        //ui.horizontal(|ui| {
+
+                        if ui.button("Neu").clicked() {
+                            object
+                                .material
+                                .parts
+                                .push((0.5, substance_data.absorbers[0].clone()));
+                        }
+                        //});
+
+                        // normalize ratios
+                        let total_ratios: f32 = object.material.parts.iter().map(|m| m.0).sum();
+                        for (ratio, _) in &mut object.material.parts {
+                            *ratio = *ratio / total_ratios;
+                        }
+                    });
 
                     ui.label(format!("Absorbierte Energie: {}eV", object.absorbed_energy));
 

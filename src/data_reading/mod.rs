@@ -56,6 +56,34 @@ impl Substance {
     }
 }
 
+impl PartialEq for Substance {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Element(arc, n) => match other {
+                Self::Element(arc_other, n_other) => Arc::ptr_eq(arc, arc_other) && n == n_other,
+                Self::Compound(_) => false,
+            },
+            Self::Compound(arc) => match other {
+                Self::Element(_, _) => false,
+                Self::Compound(arc_other) => Arc::ptr_eq(arc, arc_other),
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for Substance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Element(e, n) => {
+                f.write_fmt(format_args!("{} {}", e.name, e.z + n))
+            },
+            Self::Compound(c) => {
+                f.write_str(&c.name)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StoppingPowerRow {
     /// in MeV
