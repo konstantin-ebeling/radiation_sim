@@ -72,6 +72,7 @@ pub struct TimeData {
     time_step_calc: f32,
     multi_step: usize,
     halted: bool,
+    time_passed: f32,
 }
 
 pub struct InterfaceState {
@@ -103,6 +104,7 @@ impl Plugin for RadiationSim {
                 time_step_calc: (10f32).powi(-11),
                 multi_step: 16,
                 halted: false,
+                time_passed: 0.0,
             })
             .insert_resource(InterfaceState {
                 // in debug builds show advanced default
@@ -418,13 +420,15 @@ fn move_camera(
 }
 
 fn spawn_particles(
-    time_data: Res<TimeData>,
+    mut time_data: ResMut<TimeData>,
     query: Query<(&Transform, &GlobalTransform, &Object)>,
     mut commands: Commands,
 ) {
     if time_data.halted {
         return;
     }
+
+    time_data.time_passed = time_data.time_step_calc * time_data.multi_step as f32;
 
     for (transform, global_transform, object) in query.iter() {
         let substance = object.material.pick_substance();
@@ -515,7 +519,7 @@ fn spawn_particles(
 }
 
 fn process_particles(
-    time_data: Res<TimeData>,
+    time_data: ResMut<TimeData>,
 
     ambient_query: Query<&AmbientMaterial>,
     mut query: Query<(Entity, &mut Transform, &mut Velocity, &mut Particle), Without<Object>>,

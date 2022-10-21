@@ -114,10 +114,12 @@ fn get_stopping_power(particle_type: ParticleType) -> HashMap<String, Vec<(f32, 
         ParticleType::Alpha => {vec![
             ("Air", include_str!("./../../assets/simulation_data/stopping_power_alpha/Air.csv")),
             ("Water", include_str!("./../../assets/simulation_data/stopping_power_alpha/Water.csv")),
+            ("Vacuum", include_str!("./../../assets/simulation_data/stopping_power_alpha/Vacuum.csv")),
         ]}
         ParticleType::Electron => {vec![
             ("Air", include_str!("./../../assets/simulation_data/stopping_power_electrons/Air.csv")),
             ("Water", include_str!("./../../assets/simulation_data/stopping_power_electrons/Water.csv")),
+            ("Vacuum", include_str!("./../../assets/simulation_data/stopping_power_electrons/Vacuum.csv")),
         ]}
         _ => panic!("requested stopping power table for not registered particle"),
     };
@@ -156,6 +158,7 @@ fn get_gamma_stopping_power() -> HashMap<String, Vec<(f32, f32)>> {
     let table_data = vec![
         ("Air", include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/Air.csv")),
         ("Water", include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/Water.csv")),
+        ("Vacuum", include_str!("./../../assets/simulation_data/mass_attenuation_coefficients/Vacuum.csv")),
     ];
 
     let mut stopping_powers = HashMap::new();

@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 use crate::{
-    presets, AssetHandles, Human, HumanRoot, InterfaceState, Object, Particle, SubstanceData,
-    TimeData, EV_CONVERSION,
+    material::MaterialData, presets, AmbientMaterial, AssetHandles, Human, HumanRoot,
+    InterfaceState, Object, Particle, SubstanceData, TimeData, EV_CONVERSION,
 };
 
 pub struct RadiationSimUI;
@@ -70,6 +70,7 @@ fn render_main_ui(
         }).sum();
 
         ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
+        ui.label(format!("Äquivalenzdosis/s: {} mSv/s", (equivalent_dose / time_data.time_passed) * 1_000.0));
         if ui.button("Zurücksetzen").clicked() {
             particle_query.iter().for_each(|(e, _)| {
                 commands.entity(e).despawn();
@@ -133,6 +134,7 @@ fn render_object_editor(
     mut set: ParamSet<(
         Query<(Entity, &mut Object, &mut Name, &mut Transform), Without<Human>>,
         Query<&mut Transform, With<HumanRoot>>,
+        Query<&mut AmbientMaterial>,
     )>,
     asset_handles: Res<AssetHandles>,
     substance_data: Res<SubstanceData>,
@@ -176,66 +178,7 @@ fn render_object_editor(
                     });
 
                     ui.collapsing("Material", |ui| {
-                        let len = object.material.parts.len();
-                        let mut to_remove = None;
-                        for (i, (ratio, substance)) in
-                            &mut object.material.parts.iter_mut().enumerate()
-                        {
-                            egui::ComboBox::from_label(format!("Material Typ {}", i))
-                                .selected_text(format!("{}", substance))
-                                .show_ui(ui, |ui| {
-                                    for new_substance in &substance_data.absorbers {
-                                        ui.selectable_value(
-                                            substance,
-                                            new_substance.to_owned(),
-                                            format!("{}", new_substance),
-                                        );
-                                    }
-                                    for new_substance in &substance_data.radiators {
-                                        ui.selectable_value(
-                                            substance,
-                                            new_substance.to_owned(),
-                                            format!("{}", new_substance),
-                                        );
-                                    }
-                                });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Anteil:");
-                                ui.add(
-                                    egui::DragValue::new(ratio)
-                                        .clamp_range(0.01..=1.0)
-                                        .speed(0.05),
-                                );
-                            });
-
-                            if len > 1 {
-                                if ui.button("Entfernen").clicked() {
-                                    to_remove = Some(i);
-                                }
-                            }
-
-                            ui.label("");
-                        }
-                        if let Some(i) = to_remove {
-                            object.material.parts.remove(i);
-                        }
-
-                        //ui.horizontal(|ui| {
-
-                        if ui.button("Neu").clicked() {
-                            object
-                                .material
-                                .parts
-                                .push((0.5, substance_data.absorbers[0].clone()));
-                        }
-                        //});
-
-                        // normalize ratios
-                        let total_ratios: f32 = object.material.parts.iter().map(|m| m.0).sum();
-                        for (ratio, _) in &mut object.material.parts {
-                            *ratio = *ratio / total_ratios;
-                        }
+                        material_editor(ui, &mut object.material, &substance_data, true);
                     });
 
                     ui.label(format!("Absorbierte Energie: {}eV", object.absorbed_energy));
@@ -271,6 +214,13 @@ fn render_object_editor(
 
                 position_editor(ui, &mut transform);
             });
+
+            ui.collapsing("Umgebungs Material", |ui| {
+                let mut ambient_query = set.p2();
+                let mut material = &mut ambient_query.iter_mut().next().unwrap().material;
+
+                material_editor(ui, &mut material, &substance_data, false);
+            });
         });
 }
 
@@ -294,6 +244,70 @@ fn position_editor(ui: &mut egui::Ui, transform: &mut Transform) {
                 .speed(0.1),
         );
     });
+}
+
+fn material_editor(
+    ui: &mut egui::Ui,
+    material: &mut MaterialData,
+    substance_data: &Res<SubstanceData>,
+    show_radiators: bool,
+) {
+    let len = material.parts.len();
+    let mut to_remove = None;
+    for (i, (ratio, substance)) in &mut material.parts.iter_mut().enumerate() {
+        egui::ComboBox::from_label(format!("Material Typ {}", i))
+            .selected_text(format!("{}", substance))
+            .show_ui(ui, |ui| {
+                for new_substance in &substance_data.absorbers {
+                    ui.selectable_value(
+                        substance,
+                        new_substance.to_owned(),
+                        format!("{}", new_substance),
+                    );
+                }
+                if show_radiators {
+                    for new_substance in &substance_data.radiators {
+                        ui.selectable_value(
+                            substance,
+                            new_substance.to_owned(),
+                            format!("{}", new_substance),
+                        );
+                    }
+                }
+            });
+
+        ui.horizontal(|ui| {
+            ui.label("Anteil:");
+            ui.add(
+                egui::DragValue::new(ratio)
+                    .clamp_range(0.01..=1.0)
+                    .speed(0.05),
+            );
+        });
+
+        if len > 1 {
+            if ui.button("Entfernen").clicked() {
+                to_remove = Some(i);
+            }
+        }
+
+        ui.label("");
+    }
+    if let Some(i) = to_remove {
+        material.parts.remove(i);
+    }
+
+    if ui.button("Neu").clicked() {
+        material
+            .parts
+            .push((0.5, substance_data.absorbers[0].clone()));
+    }
+
+    // normalize ratios
+    let total_ratios: f32 = material.parts.iter().map(|m| m.0).sum();
+    for (ratio, _) in &mut material.parts {
+        *ratio = *ratio / total_ratios;
+    }
 }
 
 // egui::Window::new("Elemente").show(egui_context.ctx_mut(), |ui| {
