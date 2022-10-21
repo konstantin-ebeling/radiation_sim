@@ -1,0 +1,105 @@
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
+    <title>Radiation Simulation</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            background-color: transparent;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #loading {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #666;
+            padding-right: 1.5em;
+        }
+
+        .lds-dual-ring {
+            display: inline-block;
+            width: 60px;
+            height: 60px;
+        }
+
+        .lds-dual-ring:after {
+            content: " ";
+            display: block;
+            width: 55px;
+            height: 55px;
+            margin: 0px;
+            border-radius: 50%;
+            border: 5px solid #666;
+            border-color: #666 transparent #666 transparent;
+            animation: lds-dual-ring 1.2s linear infinite;
+        }
+
+        @keyframes lds-dual-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .construction {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5;
+            font-size: 15em;
+            background-color: white;
+        }
+    </style>
+
+    <script defer>
+        // Why?
+        setTimeout(() => {
+            document.body.addEventListener("contextmenu", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        }, 100);
+    </script>
+    <script defer type="module">
+        import init from "./radiation_sim_bin.js";
+        init();
+    </script>
+</head>
+
+<body>
+    <canvas id="maincanvas"></canvas>
+    <div id="container">
+        <div id="loading">Loading...</div>
+        <div class="lds-dual-ring"></div>
+        <!-- <div class="construction">Ab 21.10.2022 verfügbar!</div> -->
+    </div>
+</body>
+
+</html>
