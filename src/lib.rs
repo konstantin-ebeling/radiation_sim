@@ -58,7 +58,7 @@ pub struct Human;
 #[derive(Debug, Component)]
 pub struct HumanRoot;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct SubstanceData {
     pub elements: BTreeMap<usize, Arc<Element>>,
     pub compounds: BTreeMap<String, Arc<Compound>>,
@@ -66,7 +66,7 @@ pub struct SubstanceData {
     pub absorbers: Vec<Substance>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct TimeData {
     time_step_move: f32,
     time_step_calc: f32,
@@ -75,11 +75,13 @@ pub struct TimeData {
     time_passed: f32,
 }
 
+#[derive(Debug, Resource)]
 pub struct InterfaceState {
     advanced: bool,
     edit_objects: bool,
 }
 
+#[derive(Debug, Resource)]
 pub struct AssetHandles {
     cube_mesh: Option<Handle<Mesh>>,
     grey_material: Option<Handle<StandardMaterial>>,
@@ -120,8 +122,8 @@ impl Plugin for RadiationSim {
                 brightness: 0.1,
                 color: Color::rgb(1.0, 1.0, 1.0),
             })
-            .add_startup_system_to_stage(StartupStage::PreStartup, read_data)
-            .add_startup_system(setup)
+            .add_startup_system(read_data)
+            .add_startup_system(setup.after(read_data))
             .add_system(move_camera)
             .add_system(spawn_particles)
             .add_system(process_particles);
@@ -142,7 +144,7 @@ fn setup(
     let mut light_transform = Transform::from_xyz(0.0, 0.0, 0.0);
     light_transform.rotate_y(std::f32::consts::PI / -5.0);
     light_transform.rotate_x(std::f32::consts::PI / -6.0);
-    commands.spawn_bundle(DirectionalLightBundle {
+    commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             color: Color::rgb(1.0, 1.0, 1.0),
             illuminance: 5000.0,
@@ -155,14 +157,14 @@ fn setup(
 
     // ------ Camera ------
 
-    commands.spawn_bundle(Camera3dBundle {
+    commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     });
 
     // ------ Particle Effects ------
 
-    commands.spawn().insert_bundle((
+    commands.spawn((
         meshes.add(Mesh::from(shape::Cube { size: 0.005 })),
         Transform::from_xyz(0.0, 0.0, 0.0),
         GlobalTransform::default(),
@@ -174,7 +176,7 @@ fn setup(
 
     // ambient material
 
-    commands.spawn().insert(AmbientMaterial {
+    commands.spawn(AmbientMaterial {
         material: presets::air(&substance_data),
     });
 
@@ -187,85 +189,87 @@ fn setup(
     let light_grey_material = materials.add(Color::rgb(0.8, 0.8, 0.8).into());
     asset_handles.light_grey_material = Some(light_grey_material);
 
-    commands
-        .spawn()
-        .insert(Name::new("Wand"))
-        .insert_bundle(PbrBundle {
+    commands.spawn((
+        Name::new("Wand"),
+        PbrBundle {
             material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.5, 0.5, 0.0).with_scale(Vec3::new(0.01, 2.0, 2.0)),
             ..Default::default()
-        })
-        .insert(Object {
+        },
+        Object {
             material: presets::pb208(&substance_data),
             ..Default::default()
-        });
+        },
+    ));
 
-    commands
-        .spawn()
-        .insert(Name::new("Boden"))
-        .insert_bundle(PbrBundle {
+    commands.spawn((
+        Name::new("Boden"),
+        PbrBundle {
             material: asset_handles.grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
             ..Default::default()
-        })
-        .insert(Object {
+        },
+        Object {
             material: presets::pb208(&substance_data),
             ..Default::default()
-        });
+        },
+    ));
 
     // spawner
 
-    commands
-        .spawn()
-        .insert(Name::new("Strahlenquelle"))
-        .insert_bundle(PbrBundle {
+    commands.spawn((
+        Name::new("Strahlenquelle"),
+        PbrBundle {
             material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, 0.1, 0.0).with_scale(Vec3::new(0.2, 0.2, 0.2)),
             ..Default::default()
-        })
-        .insert(Object {
+        },
+        Object {
             material: presets::pu239(&substance_data),
             ..Default::default()
-        });
+        },
+    ));
 
     // human
     commands
-        .spawn_bundle(SceneBundle {
-            scene: asset_server.load("human_model/human.glb#Scene0"),
-            transform: Transform::from_xyz(2.0, 0.0, 0.0),
-            ..default()
-        })
-        .insert(Human)
-        .insert(HumanRoot)
-        .add_children(|parent| {
-            parent
-                .spawn()
-                .insert(Name::new("Main Body"))
-                .insert_bundle(TransformBundle {
+        .spawn((
+            SceneBundle {
+                scene: asset_server.load("human_model/human.glb#Scene0"),
+                transform: Transform::from_xyz(2.0, 0.0, 0.0),
+                ..default()
+            },
+            Human,
+            HumanRoot,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Name::new("Main Body"),
+                TransformBundle {
                     local: Transform::from_xyz(0.0, 0.9, 0.0).with_scale(Vec3::new(0.27, 1.8, 0.2)),
                     ..Default::default()
-                })
-                .insert(Object {
+                },
+                Object {
                     material: presets::water(&substance_data),
                     ..Default::default()
-                })
-                .insert(Human);
+                },
+                Human,
+            ));
 
-            parent
-                .spawn()
-                .insert(Name::new("Arms"))
-                .insert_bundle(TransformBundle {
+            parent.spawn((
+                Name::new("Arms"),
+                TransformBundle {
                     local: Transform::from_xyz(0.0, 1.37, 0.0).with_scale(Vec3::new(1.7, 0.1, 0.1)),
                     ..Default::default()
-                })
-                .insert(Object {
+                },
+                Object {
                     material: presets::water(&substance_data),
                     ..Default::default()
-                })
-                .insert(Human);
+                },
+                Human,
+            ));
         });
 }
 
@@ -318,7 +322,7 @@ fn read_data(mut substance_data: ResMut<SubstanceData>) {
     for e in &substance_data.radiators {
         match &e {
             Substance::Element(element, n) => {
-                let isotope = &element.isotopes[&n];
+                let isotope = &element.isotopes[n];
                 log::info!(
                     "{} {:?}: {:?} eV, {:?} ev, {} Bq/kg",
                     element.symbol,
@@ -475,39 +479,35 @@ fn spawn_particles(
                             };
 
                             // spawn particle
-                            commands
-                                .spawn()
-                                .insert_bundle(TransformBundle::from_transform(
-                                    Transform::from_translation(
-                                        global_transform.translation() + pos_offset,
-                                    ),
-                                ))
-                                .insert(Particle {
+                            commands.spawn((
+                                TransformBundle::from_transform(Transform::from_translation(
+                                    global_transform.translation() + pos_offset,
+                                )),
+                                Particle {
                                     // these have energy as velocity
                                     energy: 0.0,
                                     particle_type: particle_type.clone(),
-                                })
-                                .insert(Velocity(
+                                },
+                                Velocity(
                                     velocity_direction
                                         * energy_to_velocity(decay.decay_energy, particle_type),
-                                ))
-                                .insert_bundle(VisibilityBundle::default());
+                                ),
+                                VisibilityBundle::default(),
+                            ));
 
                             // spawn gamma ray
                             if let Some(gamma_energy) = decay.gamma_energy {
-                                commands
-                                    .spawn()
-                                    .insert_bundle(TransformBundle::from_transform(
-                                        Transform::from_translation(
-                                            transform.clone().translation + pos_offset,
-                                        ),
-                                    ))
-                                    .insert(Particle {
+                                commands.spawn((
+                                    TransformBundle::from_transform(Transform::from_translation(
+                                        transform.clone().translation + pos_offset,
+                                    )),
+                                    Particle {
                                         energy: gamma_energy,
                                         particle_type: ParticleType::Gamma,
-                                    })
-                                    .insert(Velocity(velocity_direction * LIGHT_SPEED))
-                                    .insert_bundle(VisibilityBundle::default());
+                                    },
+                                    Velocity(velocity_direction * LIGHT_SPEED),
+                                    VisibilityBundle::default(),
+                                ));
                             }
                         }
                     }
@@ -538,9 +538,9 @@ fn process_particles(
         .map(|q| (q, AtomicF32::new(0.0)))
         .collect::<Vec<_>>();
 
-    query.par_for_each_mut(
-        4096,
-        |(entity, mut transform, mut velocity, mut particle)| {
+    query
+        .par_iter_mut()
+        .for_each_mut(|(entity, mut transform, mut velocity, mut particle)| {
             for _ in 0..time_data.multi_step {
                 // move particle
                 let move_step = velocity.0 * time_data.time_step_move as f32;
@@ -632,8 +632,7 @@ fn process_particles(
                     break;
                 }
             }
-        },
-    );
+        });
 
     for ((mut obstacle, _, _), absorbed_energy) in objects {
         obstacle.absorbed_energy += absorbed_energy.load(Ordering::Relaxed);
@@ -702,20 +701,26 @@ fn calculate_energy_transfer(
 
 pub fn run() {
     App::new()
-        .insert_resource(bevy::log::LogSettings {
-            level: bevy::log::Level::INFO,
-            filter: "spawn=trace,wgpu_core=warn,wgpu_hal=warn".to_string(),
-        })
-        .insert_resource(WindowDescriptor {
-            fit_canvas_to_parent: true,
-            resizable: true,
-            #[cfg(not(debug_assertions))]
-            canvas: Some("#maincanvas".to_owned()),
-            title: "Radiation Simulation".to_owned(),
-            ..Default::default()
-        })
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
-        .add_plugins(DefaultPlugins)
+        .add_plugins(
+            DefaultPlugins
+                .set(bevy::log::LogPlugin {
+                    level: bevy::log::Level::INFO,
+                    filter: "spawn=trace,wgpu_core=warn,wgpu_hal=warn".to_string(),
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Radiation Simulation".into(),
+                        fit_canvas_to_parent: true,
+                        #[cfg(not(debug_assertions))]
+                        canvas: Some("#maincanvas".to_owned()),
+                        resizable: true,
+                        prevent_default_event_handling: false,
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_system(bevy::window::close_on_esc)
         .add_plugin(RadiationSim)
         .run();

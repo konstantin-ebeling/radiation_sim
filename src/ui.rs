@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
 
 use crate::{
     material::MaterialData, presets, AmbientMaterial, AssetHandles, Human, HumanRoot,
@@ -18,7 +18,7 @@ impl Plugin for RadiationSimUI {
 }
 
 fn render_main_ui(
-    mut egui_context: ResMut<EguiContext>,
+    mut contexts: EguiContexts,
     mut time_data: ResMut<TimeData>,
     mut interface_state: ResMut<InterfaceState>,
 
@@ -31,7 +31,7 @@ fn render_main_ui(
 
     mut commands: Commands,
 ) {
-    egui::Window::new("Simulation von Radioaktivität").anchor(egui::Align2::LEFT_TOP, [10.0, 10.0]).show(egui_context.ctx_mut(), |ui| {
+    egui::Window::new("Simulation von Radioaktivität").anchor(egui::Align2::LEFT_TOP, [10.0, 10.0]).show(contexts.ctx_mut(), |ui| {
         ui.heading("Virtuelle Umgebung");
         ui.label(format!("Anzahl simulierte Teilchen: {}", particle_query.iter().len()));
         if !interface_state.edit_objects {
@@ -97,10 +97,10 @@ fn render_main_ui(
     });
 }
 
-fn render_legend(mut egui_context: ResMut<EguiContext>) {
+fn render_legend(mut contexts: EguiContexts) {
     egui::Window::new("Legende")
         .anchor(egui::Align2::LEFT_BOTTOM, [10.0, -10.0])
-        .show(egui_context.ctx_mut(), |ui| {
+        .show(contexts.ctx_mut(), |ui| {
             ui.horizontal(|mut ui| {
                 egui::color_picker::show_color(
                     &mut ui,
@@ -129,7 +129,7 @@ fn render_legend(mut egui_context: ResMut<EguiContext>) {
 }
 
 fn render_object_editor(
-    mut egui_context: ResMut<EguiContext>,
+    mut contexts: EguiContexts,
     mut interface_state: ResMut<InterfaceState>,
     mut set: ParamSet<(
         Query<(Entity, &mut Object, &mut Name, &mut Transform), Without<Human>>,
@@ -144,7 +144,7 @@ fn render_object_editor(
     egui::Window::new("Objekt Bearbeitung")
         .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
         .open(&mut interface_state.edit_objects)
-        .show(egui_context.ctx_mut(), |ui| {
+        .show(contexts.ctx_mut(), |ui| {
             let mut i = 1;
             for (entity, mut object, mut name, mut transform) in set.p0().iter_mut() {
                 ui.collapsing(name.clone().as_str(), |ui| {
@@ -192,20 +192,20 @@ fn render_object_editor(
             }
 
             if ui.button("Neues Objekt").clicked() {
-                commands
-                    .spawn()
-                    .insert(Name::new(format!("Objekt {}", i)))
-                    .insert_bundle(PbrBundle {
+                commands.spawn((
+                    Name::new(format!("Objekt {}", i)),
+                    PbrBundle {
                         material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
                         mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
                         transform: Transform::from_xyz(0.0, 0.0, 0.0)
                             .with_scale(Vec3::new(1.0, 1.0, 1.0)),
                         ..Default::default()
-                    })
-                    .insert(Object {
+                    },
+                    Object {
                         material: presets::pb208(&substance_data),
                         ..Default::default()
-                    });
+                    },
+                ));
             }
 
             ui.collapsing("Mensch", |ui| {
