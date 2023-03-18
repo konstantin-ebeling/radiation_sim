@@ -1,8 +1,10 @@
+use bevy::prelude::*;
+
 use crate::data_reading::Substance;
 
 pub mod presets;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone, Reflect)]
 pub struct MaterialData {
     pub parts: Vec<(f32, Substance)>,
 }
@@ -28,5 +30,11 @@ impl MaterialData {
             .iter()
             .map(|(amount, substance)| substance.density() * amount)
             .sum()
+    }
+}
+
+impl Default for MaterialData {
+    fn default() -> Self {
+        presets::vacuum()
     }
 }

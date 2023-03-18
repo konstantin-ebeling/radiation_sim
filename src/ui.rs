@@ -2,8 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 
 use crate::{
-    material::MaterialData, presets, AmbientMaterial, AssetHandles, Human, HumanRoot,
-    InterfaceState, Object, Particle, SubstanceData, TimeData, EV_CONVERSION,
+    material::MaterialData, presets, AmbientMaterial, AssetHandles, CurrentEnv, Human, HumanRoot,
+    InterfaceState, Object, Particle, ResetParticles, SandboxObject, SubstanceData, TimeData,
+    EV_CONVERSION,
 };
 
 pub struct RadiationSimUI;
@@ -21,15 +22,12 @@ fn render_main_ui(
     mut contexts: EguiContexts,
     mut time_data: ResMut<TimeData>,
     mut interface_state: ResMut<InterfaceState>,
+    env_state: ResMut<State<CurrentEnv>>,
+    mut next_env_state: ResMut<NextState<CurrentEnv>>,
 
     particle_query: Query<(Entity, &Particle)>,
-    // first for measurements, second for reset
-    mut set: ParamSet<(
-        Query<(&Object, &Transform), With<Human>>,
-        Query<&mut Object>,
-    )>,
-
-    mut commands: Commands,
+    human_query: Query<(&Object, &Transform), With<Human>>,
+    mut reset_event: EventWriter<ResetParticles>,
 ) {
     egui::Window::new("Simulation von Radioaktivität").anchor(egui::Align2::LEFT_TOP, [10.0, 10.0]).show(contexts.ctx_mut(), |ui| {
         ui.heading("Virtuelle Umgebung");
@@ -62,7 +60,7 @@ fn render_main_ui(
 
         ui.heading("Messwerte");
 
-        let equivalent_dose: f32 = set.p0().iter().map(|(object, transform)| {
+        let equivalent_dose: f32 = human_query.iter().map(|(object, transform)| {
             // calculate equivalent dose for the current human body estimation
             let volume = transform.scale.x * transform.scale.y * transform.scale.z;
             let weight = object.material.average_density() * volume;
@@ -72,13 +70,7 @@ fn render_main_ui(
         ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
         ui.label(format!("Äquivalenzdosis/s: {} mSv/s", (equivalent_dose / time_data.time_passed) * 1_000.0));
         if ui.button("Zurücksetzen").clicked() {
-            particle_query.iter().for_each(|(e, _)| {
-                commands.entity(e).despawn();
-            });
-
-            set.p1().iter_mut().for_each(|mut object| {
-                object.absorbed_energy = 0.0;
-            });
+            reset_event.send_default();
         }
         ui.separator();
 
@@ -94,6 +86,18 @@ fn render_main_ui(
                 interface_state.advanced = true;
             }
         }
+
+        if !matches!(env_state.0, CurrentEnv::Sandbox) {
+            if ui.button("Sandbox").clicked() {
+                next_env_state.set(CurrentEnv::Sandbox);
+            }
+        } else if !matches!(env_state.0, CurrentEnv::Experiment) {
+            if ui.button("Experiment").clicked() {
+                next_env_state.set(CurrentEnv::Experiment);
+            }
+        }
+
+        ui.label("Entwickelt von Konstantin Ebeling");
     });
 }
 
@@ -205,6 +209,7 @@ fn render_object_editor(
                         material: presets::pb208(&substance_data),
                         ..Default::default()
                     },
+                    SandboxObject,
                 ));
             }
 

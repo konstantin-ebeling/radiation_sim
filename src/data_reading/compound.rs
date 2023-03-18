@@ -8,7 +8,7 @@ use crate::{ParticleType, StoppingPower};
 
 use super::{parse_num, MassAttenuationCoefficientRow, StoppingPowerRow};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Compound {
     pub symbol: String,
     pub name: String,

@@ -24,9 +24,9 @@ use bytemuck::{Pod, Zeroable};
 
 use super::{Particle, ParticleType};
 
-pub struct CustomMaterialPlugin;
+pub struct ParticleRenderPlugin;
 
-impl Plugin for CustomMaterialPlugin {
+impl Plugin for ParticleRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(ExtractComponentPlugin::<InstanceMaterialData>::default())
             .add_system(prepare_particle_render);

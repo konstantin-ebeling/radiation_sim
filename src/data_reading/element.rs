@@ -8,7 +8,7 @@ use crate::{constants::*, ParticleType, StoppingPower};
 
 use super::{parse_num, MassAttenuationCoefficientRow, StoppingPowerRow};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Element {
     pub z: usize,
     pub symbol: String,
