@@ -174,11 +174,7 @@ fn spawn_experiment(
     commands.spawn((
         Name::new("Boden"),
         PbrBundle {
-            material: asset_handles
-                .checkerboard_material
-                .as_ref()
-                .unwrap()
-                .clone(),
+            material: asset_handles.grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
             transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
             ..Default::default()

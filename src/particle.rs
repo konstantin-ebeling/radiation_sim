@@ -52,8 +52,8 @@ pub struct Velocity(Vec3);
 
 #[derive(Debug, Resource)]
 pub struct TimeData {
-    pub time_step_move: f32,
     pub time_step_calc: f32,
+    pub time_step_move: f32,
     pub multi_step: usize,
     pub halted: bool,
     pub time_passed: f32,

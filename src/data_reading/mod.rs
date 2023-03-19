@@ -131,8 +131,7 @@ fn parse_num(num: &str) -> f32 {
         num.parse().unwrap_or(0.0)
     } else {
         let num = num.split_once('E').unwrap();
-        num.0.parse().unwrap_or(0.0)
-            * 10_f32.powi(num.1.parse().unwrap_or(0))
+        num.0.parse().unwrap_or(0.0) * 10_f32.powi(num.1.parse().unwrap_or(0))
     }
 }
 

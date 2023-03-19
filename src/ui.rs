@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 
 use crate::{
-    material::MaterialData, presets, AmbientMaterial, AssetHandles, CurrentEnv, Human, HumanRoot,
-    InterfaceState, Object, Particle, ResetParticles, SandboxObject, SubstanceData, TimeData,
-    EV_CONVERSION,
+    env::ExperimentTarget, material::MaterialData, particle::LinearSpawner, presets,
+    AmbientMaterial, AssetHandles, CurrentEnv, Human, HumanRoot, InterfaceState, Object, Particle,
+    ResetParticles, SandboxObject, SubstanceData, TimeData, EV_CONVERSION,
 };
 
 pub struct RadiationSimUI;
@@ -21,75 +21,147 @@ impl Plugin for RadiationSimUI {
 fn render_main_ui(
     mut contexts: EguiContexts,
     mut time_data: ResMut<TimeData>,
+    substance_data: Res<SubstanceData>,
     mut interface_state: ResMut<InterfaceState>,
     env_state: ResMut<State<CurrentEnv>>,
     mut next_env_state: ResMut<NextState<CurrentEnv>>,
 
     particle_query: Query<(Entity, &Particle)>,
-    human_query: Query<(&Object, &Transform), With<Human>>,
     mut reset_event: EventWriter<ResetParticles>,
+
+    mut set: ParamSet<(
+        Query<(&Object, &Transform), With<Human>>,
+        Query<(&mut Object, &mut Transform), With<ExperimentTarget>>,
+    )>,
+    mut experiment_spawner: Query<&mut LinearSpawner>,
 ) {
     egui::Window::new("Simulation von Radioaktivität").anchor(egui::Align2::LEFT_TOP, [10.0, 10.0]).show(contexts.ctx_mut(), |ui| {
-        ui.heading("Virtuelle Umgebung");
+
+        if matches!(env_state.0, CurrentEnv::Sandbox) {
+            ui.heading("Messwerte");
+
+            let equivalent_dose: f32 = set.p0().iter().map(|(object, transform)| {
+                // calculate equivalent dose for the current human body estimation
+                let volume = transform.scale.x * transform.scale.y * transform.scale.z;
+                let weight = object.material.average_density() * volume;
+                object.absorbed_energy * *EV_CONVERSION / weight
+            }).sum();
+
+            ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
+            ui.label(format!("Äquivalenzdosis/s: {} mSv/s", (equivalent_dose / time_data.time_passed) * 1_000.0));
+            if ui.button("Zurücksetzen").clicked() {
+                reset_event.send_default();
+            }
+        } else if matches!(env_state.0, CurrentEnv::Experiment) {
+            ui.heading("Test Objekt Material");
+            let mut query = set.p1();
+            let mut target = query.single_mut();
+
+            material_editor(ui, &mut target.0.material, &substance_data, false);
+
+            ui.horizontal(|ui| {
+                ui.label("Dicke");
+                ui.add(
+                    egui::DragValue::new(&mut target.1.scale.x)
+                        .clamp_range(0..=1)
+                        .speed(0.0001),
+                );
+            });
+
+            ui.separator();
+
+            ui.collapsing("Linear Quelle", |ui| {
+                let mut spawner = experiment_spawner.single_mut();
+
+                let mut alpha_rate_log = spawner.alpha_rate.log10();
+                ui.horizontal(|ui| {
+                    ui.label("Alpha Rate: 10^");
+                    ui.add(
+                        egui::DragValue::new(&mut alpha_rate_log)
+                            .clamp_range(0..=15)
+                            .speed(0.1),
+                    );
+                });
+                spawner.alpha_rate = (10.0f32).powf(alpha_rate_log);
+
+                let mut beta_rate_log = spawner.beta_rate.log10();
+                ui.horizontal(|ui| {
+                    ui.label("Beta Rate: 10^");
+                    ui.add(
+                        egui::DragValue::new(&mut beta_rate_log)
+                            .clamp_range(0..=15)
+                            .speed(0.1),
+                    );
+                });
+                spawner.alpha_rate = (10.0f32).powf(beta_rate_log);
+
+                let mut gamma_rate_log = spawner.gamma_rate.log10();
+                ui.horizontal(|ui| {
+                    ui.label("Gamma Rate: 10^");
+                    ui.add(
+                        egui::DragValue::new(&mut gamma_rate_log)
+                            .clamp_range(0..=15)
+                            .speed(0.1),
+                    );
+                });
+                spawner.gamma_rate = (10.0f32).powf(gamma_rate_log);
+
+                let mut energy_log = spawner.particle_energy.log10();
+                ui.horizontal(|ui| {
+                    ui.label("Teilchen Energie (eV): 10^");
+                    ui.add(
+                        egui::DragValue::new(&mut energy_log)
+                            .clamp_range(0..=10)
+                            .speed(0.1),
+                    );
+                });
+                spawner.particle_energy = (10.0f32).powf(energy_log);
+            });
+        }
+
         ui.label(format!("Anzahl simulierte Teilchen: {}", particle_query.iter().len()));
-        if !interface_state.edit_objects {
-            if ui.button("Bearbeiten").clicked() {
-                interface_state.edit_objects = true;
-            }
-        } else if ui.button("Bearbeitung stoppen").clicked() {
-            interface_state.edit_objects = false;
-        }
-        ui.separator();
-
-        ui.heading("Zeit");
-        ui.label("Zeit Faktor: 10^-12");
-
-        if !time_data.halted {
-            if ui.button("Simulation pausieren").clicked() {
-                time_data.halted = true;
-            }
-        } else if ui.button("Simulation fortsetzen").clicked() {
-            time_data.halted = false;
-        }
 
         ui.separator();
 
-        ui.heading("Messwerte");
+        time_editor(ui, &mut *time_data);
 
-        let equivalent_dose: f32 = human_query.iter().map(|(object, transform)| {
-            // calculate equivalent dose for the current human body estimation
-            let volume = transform.scale.x * transform.scale.y * transform.scale.z;
-            let weight = object.material.average_density() * volume;
-            object.absorbed_energy * *EV_CONVERSION / weight
-        }).sum();
+        ui.collapsing("Erweitert", |ui| {
+            if !matches!(env_state.0, CurrentEnv::Sandbox) {
+                if ui.button("Sandbox").clicked() {
+                    next_env_state.set(CurrentEnv::Sandbox);
+                }
+            } else if !matches!(env_state.0, CurrentEnv::Experiment) {
+                if  ui.button("Experiment").clicked() {
+                    next_env_state.set(CurrentEnv::Experiment);
+                }
+            }
 
-        ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
-        ui.label(format!("Äquivalenzdosis/s: {} mSv/s", (equivalent_dose / time_data.time_passed) * 1_000.0));
-        if ui.button("Zurücksetzen").clicked() {
-            reset_event.send_default();
-        }
+            if !interface_state.edit_objects {
+                if ui.button("Bearbeiten").clicked() {
+                    interface_state.edit_objects = true;
+                }
+            } else if ui.button("Bearbeitung stoppen").clicked() {
+                interface_state.edit_objects = false;
+            }
+
+            ui.separator();
+
+            ui.heading("Steuerung");
+
+            if interface_state.advanced {
+                ui.label("Benutzen Sie die rechte Maustaste um sich umzuschauen und das Scroll-Rad um sich vor und zurück zu bewegen.");
+                if ui.button("Zur vereinfachten Steuerung wechseln").clicked() {
+                    interface_state.advanced = false;
+                }
+            } else {
+                ui.label("Benutzen Sie die linke Maustaste oder tippen um sich umzuschauen");
+                if ui.button("Zur erweiterten Steuerung wechseln").clicked() {
+                    interface_state.advanced = true;
+                }
+            }
+        });
+
         ui.separator();
-
-        ui.heading("Steuerung");
-        if interface_state.advanced {
-            ui.label("Benutzen Sie die rechte Maustaste um sich umzuschauen und das Scroll-Rad um sich vor und zurück zu bewegen.");
-            if ui.button("Zur vereinfachten Steuerung wechseln").clicked() {
-                interface_state.advanced = false;
-            }
-        } else {
-            ui.label("Benutzen Sie die linke Maustaste oder tippen um sich umzuschauen");
-            if ui.button("Zur erweiterten Steuerung wechseln").clicked() {
-                interface_state.advanced = true;
-            }
-        }
-
-        if !matches!(env_state.0, CurrentEnv::Sandbox) {
-            if ui.button("Sandbox").clicked() {
-                next_env_state.set(CurrentEnv::Sandbox);
-            }
-        } else if !matches!(env_state.0, CurrentEnv::Experiment) && ui.button("Experiment").clicked() {
-            next_env_state.set(CurrentEnv::Experiment);
-        }
 
         ui.label("Entwickelt von Konstantin Ebeling");
     });
@@ -221,6 +293,49 @@ fn render_object_editor(
                 material_editor(ui, material, &substance_data, false);
             });
         });
+}
+
+fn time_editor(ui: &mut egui::Ui, time_data: &mut TimeData) {
+    ui.collapsing("Zeit", |ui| {
+        let mut time_step_calc_log = -time_data.time_step_calc.log10();
+        ui.horizontal(|ui| {
+            ui.label("Zeit Faktor: 10^-");
+            ui.add(
+                egui::DragValue::new(&mut time_step_calc_log)
+                    .clamp_range(10..=15)
+                    .speed(0.1),
+            );
+        });
+        time_data.time_step_calc = (10.0f32).powf(-time_step_calc_log);
+
+        let mut time_step_move_log = -time_data.time_step_move.log10();
+        ui.horizontal(|ui| {
+            ui.label("Bewegungs Zeit Faktor: 10^-");
+            ui.add(
+                egui::DragValue::new(&mut time_step_move_log)
+                    .clamp_range(10..=15)
+                    .speed(0.1),
+            );
+        });
+        time_data.time_step_move = (10.0f32).powf(-time_step_move_log);
+
+        ui.horizontal(|ui| {
+            ui.label("Multischritt:");
+            ui.add(
+                egui::DragValue::new(&mut time_data.multi_step)
+                    .clamp_range(4..=256)
+                    .speed(4.0),
+            );
+        });
+
+        if !time_data.halted {
+            if ui.button("Simulation pausieren").clicked() {
+                time_data.halted = true;
+            }
+        } else if ui.button("Simulation fortsetzen").clicked() {
+            time_data.halted = false;
+        }
+    });
 }
 
 fn position_editor(ui: &mut egui::Ui, transform: &mut Transform) {
