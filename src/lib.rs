@@ -23,11 +23,12 @@ pub struct InterfaceState {
     edit_objects: bool,
 }
 
-#[derive(Debug, Resource)]
+#[derive(Debug, Resource, Default)]
 pub struct AssetHandles {
     cube_mesh: Option<Handle<Mesh>>,
     grey_material: Option<Handle<StandardMaterial>>,
     light_grey_material: Option<Handle<StandardMaterial>>,
+    checkerboard_material: Option<Handle<StandardMaterial>>,
 }
 pub struct RadiationSim;
 
@@ -41,11 +42,7 @@ impl Plugin for RadiationSim {
                 advanced: cfg!(debug_assertions),
                 edit_objects: cfg!(debug_assertions),
             })
-            .insert_resource(AssetHandles {
-                cube_mesh: None,
-                grey_material: None,
-                light_grey_material: None,
-            })
+            .init_resource::<AssetHandles>()
             .insert_resource(AmbientLight {
                 brightness: 0.1,
                 color: Color::rgb(1.0, 1.0, 1.0),
@@ -60,6 +57,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut asset_handles: ResMut<AssetHandles>,
+    asset_server: Res<AssetServer>,
 ) {
     // ------ World ------
 
@@ -80,7 +78,7 @@ fn setup(
     // ------ Camera ------
 
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        transform: Transform::from_xyz(-1.0, 1.0, 1.5).looking_at(Vec3::ZERO, Vec3::Y),
         ..default()
     });
 
@@ -92,6 +90,13 @@ fn setup(
     asset_handles.grey_material = Some(grey_material);
     let light_grey_material = materials.add(Color::rgb(0.8, 0.8, 0.8).into());
     asset_handles.light_grey_material = Some(light_grey_material);
+    let checker_board_material = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(asset_server.load("checkerboard.png")),
+
+        ..Default::default()
+    });
+    asset_handles.checkerboard_material = Some(checker_board_material);
 }
 
 fn move_camera(
@@ -174,7 +179,7 @@ pub fn run() {
             DefaultPlugins
                 .set(bevy::log::LogPlugin {
                     level: bevy::log::Level::INFO,
-                    filter: "spawn=trace,wgpu_core=warn,wgpu_hal=error,naga=warn".to_string(),
+                    filter: "spawn=trace,wgpu_core=warn,wgpu_hal=error,bevy_ecs=error".to_string(),
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {

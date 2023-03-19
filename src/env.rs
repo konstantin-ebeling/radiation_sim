@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
-use crate::material::presets;
-use crate::{AssetHandles, Object, ResetParticles, SubstanceData};
+use crate::{
+    presets, AmbientMaterial, AssetHandles, LinearSpawner, Object, ResetParticles, SubstanceData,
+};
 
 pub struct RadiationSimEnv;
 
@@ -17,8 +18,8 @@ impl Plugin for RadiationSimEnv {
 
 #[derive(States, PartialEq, Eq, Debug, Clone, Hash, Default)]
 pub enum CurrentEnv {
-    #[default]
     Sandbox,
+    #[default]
     Experiment,
 }
 
@@ -38,6 +39,13 @@ fn spawn_sandbox(
     asset_server: Res<AssetServer>,
     substance_data: Res<SubstanceData>,
 ) {
+    commands.spawn((
+        AmbientMaterial {
+            material: presets::air(&substance_data),
+        },
+        SandboxObject,
+    ));
+
     // obstacles
     commands.spawn((
         Name::new("Wand"),
@@ -85,7 +93,7 @@ fn spawn_sandbox(
         SandboxObject,
     ));
 
-    spawn_human(&mut commands, &*asset_server, &*substance_data);
+    spawn_human(&mut commands, &asset_server, &substance_data);
 }
 
 fn spawn_human(
@@ -112,7 +120,7 @@ fn spawn_human(
                     ..Default::default()
                 },
                 Object {
-                    material: presets::water(&substance_data),
+                    material: presets::water(substance_data),
                     ..Default::default()
                 },
                 Human,
@@ -126,7 +134,7 @@ fn spawn_human(
                     ..Default::default()
                 },
                 Object {
-                    material: presets::water(&substance_data),
+                    material: presets::water(substance_data),
                     ..Default::default()
                 },
                 Human,
@@ -148,6 +156,8 @@ fn despawn_sandbox(
 
 #[derive(Debug, Clone, Component)]
 pub struct ExperimentObject;
+#[derive(Debug, Clone, Component)]
+pub struct ExperimentTarget;
 
 fn spawn_experiment(
     mut commands: Commands,
@@ -155,15 +165,74 @@ fn spawn_experiment(
     substance_data: Res<SubstanceData>,
 ) {
     commands.spawn((
+        AmbientMaterial {
+            material: presets::vacuum(),
+        },
+        ExperimentObject,
+    ));
+
+    commands.spawn((
+        Name::new("Boden"),
+        PbrBundle {
+            material: asset_handles
+                .checkerboard_material
+                .as_ref()
+                .unwrap()
+                .clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
+            transform: Transform::from_xyz(0.0, -0.5, 0.0).with_scale(Vec3::new(100.0, 1.0, 100.0)),
+            ..Default::default()
+        },
+        Object {
+            material: presets::pb208(&substance_data),
+            ..Default::default()
+        },
+        ExperimentObject,
+    ));
+
+    commands.spawn((
         Name::new("Test"),
         PbrBundle {
             material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
             mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
-            transform: Transform::default().with_scale(Vec3::splat(0.1)),
+            transform: Transform::from_xyz(0.06, 0.05, 0.0).with_scale(Vec3::new(0.001, 0.1, 0.1)),
             ..Default::default()
         },
         Object {
-            material: presets::pu239(&substance_data),
+            material: presets::pb210(&substance_data),
+            ..Default::default()
+        },
+        ExperimentObject,
+        ExperimentTarget,
+    ));
+
+    commands.spawn((
+        Name::new("Linear Quelle"),
+        PbrBundle {
+            material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
+            transform: Transform::from_xyz(-0.06, 0.05, 0.0).with_scale(Vec3::new(0.01, 0.1, 0.1)),
+            ..Default::default()
+        },
+        LinearSpawner {
+            alpha_rate: 10_000_000_000.0,
+            beta_rate: 100_000_000_000.0,
+            gamma_rate: 100_000_000_000.0,
+            particle_energy: 100_000.0,
+        },
+        ExperimentObject,
+    ));
+
+    commands.spawn((
+        Name::new("Stop"),
+        PbrBundle {
+            material: asset_handles.light_grey_material.as_ref().unwrap().clone(),
+            mesh: asset_handles.cube_mesh.as_ref().unwrap().clone(),
+            transform: Transform::from_xyz(2.0, 0.5, 0.0).with_scale(Vec3::splat(1.0)),
+            ..Default::default()
+        },
+        Object {
+            material: presets::pb210(&substance_data),
             ..Default::default()
         },
         ExperimentObject,

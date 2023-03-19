@@ -89,7 +89,7 @@ pub fn get_elements() -> Vec<Arc<Element>> {
                         let decay_energy = parse_num(isotope.decay_energy.as_str()) * 1_000_000.0;
 
                         // calculate Bq/g and conver to Bq/kg
-                        let activity = half_life.clone().map(|half_life| {
+                        let activity = half_life.map(|half_life| {
                             (activity_constant / (half_life * atomic_mass)) * 1_000.0
                         });
 
@@ -99,7 +99,7 @@ pub fn get_elements() -> Vec<Arc<Element>> {
                             abundance: ordered_float::OrderedFloat(parse_num(
                                 isotope.abundance.as_str(),
                             )),
-                            half_life: half_life.map(|h| ordered_float::OrderedFloat(h)),
+                            half_life: half_life.map(ordered_float::OrderedFloat),
 
                             atomic_mass,
                             decays: vec![Decay {

@@ -4,8 +4,8 @@ use atomic_float::AtomicF32;
 use bevy::{prelude::*, render::view::NoFrustumCulling};
 
 use crate::{
-    element, presets, render, CurrentEnv, MaterialData, RadiationSimData, StoppingPower, Substance,
-    SubstanceData, ALPHA_MASS, ELECTRON_MASS, EV_CONVERSION, LIGHT_SPEED,
+    element, render, CurrentEnv, MaterialData, RadiationSimData, StoppingPower, Substance,
+    ALPHA_MASS, ELECTRON_MASS, EV_CONVERSION, LIGHT_SPEED, LIGHT_SPEED_SQ,
 };
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Default, Component, Reflect)]
@@ -37,6 +37,15 @@ pub struct Object {
     pub absorbed_energy: f32,
 }
 
+#[derive(Debug, Clone, Default, Component, Reflect)]
+#[reflect(Component)]
+pub struct LinearSpawner {
+    pub alpha_rate: f32,
+    pub beta_rate: f32,
+    pub gamma_rate: f32,
+    pub particle_energy: f32,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Component, Reflect)]
 #[reflect(Component)]
 pub struct Velocity(Vec3);
@@ -65,20 +74,17 @@ impl Plugin for RadiationSimParticle {
             })
             .add_event::<ResetParticles>()
             .add_startup_system(setup)
-            .add_system(spawn_particles.in_set(OnUpdate(CurrentEnv::Sandbox)))
+            .add_system(tick_time)
+            .add_system(spawn_object_particles.in_set(OnUpdate(CurrentEnv::Sandbox)))
+            .add_system(spawn_linear_particles.in_set(OnUpdate(CurrentEnv::Experiment)))
             .add_system(reset_particles)
             .add_system(process_particles);
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-
-    substance_data: Res<SubstanceData>,
-) {
+fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands.spawn((
-        meshes.add(Mesh::from(shape::Cube { size: 0.005 })),
+        meshes.add(Mesh::from(shape::Cube { size: 0.003 })),
         Transform::default(),
         GlobalTransform::default(),
         render::InstanceMaterialData(vec![]),
@@ -86,22 +92,24 @@ fn setup(
         ComputedVisibility::default(),
         NoFrustumCulling,
     ));
-
-    commands.spawn(AmbientMaterial {
-        material: presets::air(&substance_data),
-    });
 }
 
-fn spawn_particles(
-    mut time_data: ResMut<TimeData>,
+fn tick_time(mut time_data: ResMut<TimeData>) {
+    if time_data.halted {
+        return;
+    }
+
+    time_data.time_passed += time_data.time_step_calc * time_data.multi_step as f32;
+}
+
+fn spawn_object_particles(
+    time_data: ResMut<TimeData>,
     query: Query<(&Transform, &GlobalTransform, &Object)>,
     mut commands: Commands,
 ) {
     if time_data.halted {
         return;
     }
-
-    time_data.time_passed = time_data.time_step_calc * time_data.multi_step as f32;
 
     for (transform, global_transform, object) in query.iter() {
         let substance = object.material.pick_substance();
@@ -154,8 +162,8 @@ fn spawn_particles(
                                 )),
                                 Particle {
                                     // these have energy as velocity
-                                    energy: 0.0,
-                                    particle_type: particle_type.clone(),
+                                    energy: 1.0,
+                                    particle_type,
                                 },
                                 Velocity(
                                     velocity_direction
@@ -168,7 +176,7 @@ fn spawn_particles(
                             if let Some(gamma_energy) = decay.gamma_energy {
                                 commands.spawn((
                                     TransformBundle::from_transform(Transform::from_translation(
-                                        transform.clone().translation + pos_offset,
+                                        transform.translation + pos_offset,
                                     )),
                                     Particle {
                                         energy: gamma_energy,
@@ -187,18 +195,88 @@ fn spawn_particles(
     }
 }
 
+fn spawn_linear_particles(
+    time_data: ResMut<TimeData>,
+    query: Query<(&Transform, &GlobalTransform, &LinearSpawner)>,
+    mut commands: Commands,
+) {
+    if time_data.halted {
+        return;
+    }
+
+    for (transform, global_transform, spawner) in query.iter() {
+        for _ in 0..time_data.multi_step {
+            let particle_types = [
+                (ParticleType::Alpha, spawner.alpha_rate),
+                (ParticleType::Electron, spawner.beta_rate),
+                (ParticleType::Gamma, spawner.gamma_rate),
+            ];
+            for (particle_type, rate) in particle_types {
+                let estimated_decays = rate * time_data.time_step_calc;
+
+                let decays = estimated_decays.floor() as usize
+                    + if (estimated_decays - estimated_decays.floor()) > fastrand::f32() {
+                        1
+                    } else {
+                        0
+                    };
+
+                for _ in 0..decays {
+                    let velocity_direction = Vec3::new(1.0, 0.0, 0.0);
+
+                    let pos_offset = Vec3::new(
+                        transform.scale.x * 0.5,
+                        transform.scale.y * (fastrand::f32() - 0.5),
+                        transform.scale.z * (fastrand::f32() - 0.5),
+                    );
+
+                    if !matches!(particle_type, ParticleType::Gamma) {
+                        commands.spawn((
+                            TransformBundle::from_transform(Transform::from_translation(
+                                global_transform.translation() + pos_offset,
+                            )),
+                            Particle {
+                                // these have energy as velocity
+                                energy: 1.0,
+                                particle_type,
+                            },
+                            Velocity(
+                                velocity_direction
+                                    * energy_to_velocity(spawner.particle_energy, particle_type),
+                            ),
+                            VisibilityBundle::default(),
+                        ));
+                    } else {
+                        commands.spawn((
+                            TransformBundle::from_transform(Transform::from_translation(
+                                transform.translation + pos_offset,
+                            )),
+                            Particle {
+                                energy: spawner.particle_energy,
+                                particle_type: ParticleType::Gamma,
+                            },
+                            Velocity(velocity_direction * LIGHT_SPEED),
+                            VisibilityBundle::default(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ResetParticles;
 
 fn reset_particles(
-    particle_query: Query<(Entity, &Particle)>,
+    particle_query: Query<Entity, With<Particle>>,
     mut object_query: Query<&mut Object>,
     mut commands: Commands,
     mut events: EventReader<ResetParticles>,
 ) {
     if !events.is_empty() {
         events.clear();
-        particle_query.iter().for_each(|(e, _)| {
+        particle_query.iter().for_each(|e| {
             commands.entity(e).despawn();
         });
 
@@ -233,7 +311,7 @@ fn process_particles(
         .for_each_mut(|(entity, mut transform, mut velocity, mut particle)| {
             for _ in 0..time_data.multi_step {
                 // move particle
-                let move_step = velocity.0 * time_data.time_step_move as f32;
+                let move_step = velocity.0 * time_data.time_step_move;
                 transform.translation += move_step;
 
                 // collide particle
@@ -273,10 +351,10 @@ fn process_particles(
                     {
                         let energy = match particle.particle_type {
                             ParticleType::Gamma => particle.energy,
-                            _ => velocity_to_energy(
-                                velocity.0.clone().length(),
-                                particle.particle_type,
-                            ),
+                            _ => {
+                                velocity.0.length();
+                                velocity_to_energy(velocity.0.length(), particle.particle_type)
+                            }
                         };
 
                         // MeV/m or 1/m
@@ -339,21 +417,27 @@ fn pick_stopping_power(stopping_powers: &StoppingPower, energy: f32) -> f32 {
 }
 
 fn energy_to_velocity(energy: f32, particle_type: ParticleType) -> f32 {
-    // TODO: account for relavistiuc movement (thanks Einstein...)
     let mass = match particle_type {
-        ParticleType::Alpha => *ALPHA_MASS,
-        _ => *ELECTRON_MASS,
+        ParticleType::Electron => *ELECTRON_MASS,
+        _ => *ALPHA_MASS,
     };
-    (2.0 * energy * *EV_CONVERSION / mass).sqrt()
+
+    let k = ((energy * *EV_CONVERSION) / (mass * LIGHT_SPEED_SQ)) + 1.0;
+    let k_sq = k.powi(2);
+
+    //(LIGHT_SPEED_SQ * (k_sq - 1.0)) / k_sq
+    (LIGHT_SPEED * (k_sq - 1.0).sqrt()) / k
 }
 
 fn velocity_to_energy(velocity: f32, particle_type: ParticleType) -> f32 {
-    // TODO: account for relavistiuc movement (thanks Einstein...)
     let mass = match particle_type {
-        ParticleType::Alpha => *ALPHA_MASS,
-        _ => *ELECTRON_MASS,
+        ParticleType::Electron => *ELECTRON_MASS,
+        _ => *ALPHA_MASS,
     };
-    ((mass * velocity.powi(2)) / 2.0) / *EV_CONVERSION
+
+    let k = 1.0 / (1.0 - (velocity / LIGHT_SPEED).powi(2)).sqrt();
+
+    (k - 1.0) * mass * LIGHT_SPEED_SQ / *EV_CONVERSION
 }
 
 fn calculate_energy_transfer(

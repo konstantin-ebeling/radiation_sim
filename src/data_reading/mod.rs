@@ -127,12 +127,12 @@ pub struct MassAttenuationCoefficientRow {
 /// Will never fail, just return 0.
 fn parse_num(num: &str) -> f32 {
     // scientific notation
-    if !num.contains("E") {
-        return num.parse().unwrap_or_else(|_| 0.0);
+    if !num.contains('E') {
+        num.parse().unwrap_or(0.0)
     } else {
-        let num = num.split_once("E").unwrap();
-        return num.0.parse().unwrap_or_else(|_| 0.0)
-            * 10_f32.powi(num.1.parse().unwrap_or_else(|_| 0));
+        let num = num.split_once('E').unwrap();
+        num.0.parse().unwrap_or(0.0)
+            * 10_f32.powi(num.1.parse().unwrap_or(0))
     }
 }
 

@@ -36,10 +36,8 @@ fn render_main_ui(
             if ui.button("Bearbeiten").clicked() {
                 interface_state.edit_objects = true;
             }
-        } else {
-            if ui.button("Bearbeitung stoppen").clicked() {
-                interface_state.edit_objects = false;
-            }
+        } else if ui.button("Bearbeitung stoppen").clicked() {
+            interface_state.edit_objects = false;
         }
         ui.separator();
 
@@ -50,10 +48,8 @@ fn render_main_ui(
             if ui.button("Simulation pausieren").clicked() {
                 time_data.halted = true;
             }
-        } else {
-            if ui.button("Simulation fortsetzen").clicked() {
-                time_data.halted = false;
-            }
+        } else if ui.button("Simulation fortsetzen").clicked() {
+            time_data.halted = false;
         }
 
         ui.separator();
@@ -91,10 +87,8 @@ fn render_main_ui(
             if ui.button("Sandbox").clicked() {
                 next_env_state.set(CurrentEnv::Sandbox);
             }
-        } else if !matches!(env_state.0, CurrentEnv::Experiment) {
-            if ui.button("Experiment").clicked() {
-                next_env_state.set(CurrentEnv::Experiment);
-            }
+        } else if !matches!(env_state.0, CurrentEnv::Experiment) && ui.button("Experiment").clicked() {
+            next_env_state.set(CurrentEnv::Experiment);
         }
 
         ui.label("Entwickelt von Konstantin Ebeling");
@@ -105,25 +99,25 @@ fn render_legend(mut contexts: EguiContexts) {
     egui::Window::new("Legende")
         .anchor(egui::Align2::LEFT_BOTTOM, [10.0, -10.0])
         .show(contexts.ctx_mut(), |ui| {
-            ui.horizontal(|mut ui| {
+            ui.horizontal(|ui| {
                 egui::color_picker::show_color(
-                    &mut ui,
+                    ui,
                     egui::Color32::from_rgb(255, 0, 0),
                     [13.0, 13.0].into(),
                 );
                 ui.label("α-Teilchen");
             });
-            ui.horizontal(|mut ui| {
+            ui.horizontal(|ui| {
                 egui::color_picker::show_color(
-                    &mut ui,
+                    ui,
                     egui::Color32::from_rgb(25, 230, 25),
                     [13.0, 13.0].into(),
                 );
                 ui.label("Elektron (β-Strahlung)");
             });
-            ui.horizontal(|mut ui| {
+            ui.horizontal(|ui| {
                 egui::color_picker::show_color(
-                    &mut ui,
+                    ui,
                     egui::Color32::from_rgb(230, 230, 0),
                     [13.0, 13.0].into(),
                 );
@@ -222,9 +216,9 @@ fn render_object_editor(
 
             ui.collapsing("Umgebungs Material", |ui| {
                 let mut ambient_query = set.p2();
-                let mut material = &mut ambient_query.iter_mut().next().unwrap().material;
+                let material = &mut ambient_query.iter_mut().next().unwrap().material;
 
-                material_editor(ui, &mut material, &substance_data, false);
+                material_editor(ui, material, &substance_data, false);
             });
         });
 }
@@ -290,10 +284,8 @@ fn material_editor(
             );
         });
 
-        if len > 1 {
-            if ui.button("Entfernen").clicked() {
-                to_remove = Some(i);
-            }
+        if len > 1 && ui.button("Entfernen").clicked() {
+            to_remove = Some(i);
         }
 
         ui.label("");
@@ -311,7 +303,7 @@ fn material_editor(
     // normalize ratios
     let total_ratios: f32 = material.parts.iter().map(|m| m.0).sum();
     for (ratio, _) in &mut material.parts {
-        *ratio = *ratio / total_ratios;
+        *ratio /= total_ratios;
     }
 }
 
