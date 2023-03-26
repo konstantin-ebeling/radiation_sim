@@ -44,7 +44,7 @@ fn render_main_ui(
                 // calculate equivalent dose for the current human body estimation
                 let volume = transform.scale.x * transform.scale.y * transform.scale.z;
                 let weight = object.material.average_density() * volume;
-                object.absorbed_energy * *EV_CONVERSION / weight
+                object.absorbed_energy * *EV_CONVERSION as f32 / weight
             }).sum();
 
             ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));

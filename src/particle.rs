@@ -182,7 +182,7 @@ fn spawn_object_particles(
                                         energy: gamma_energy,
                                         particle_type: ParticleType::Gamma,
                                     },
-                                    Velocity(velocity_direction * LIGHT_SPEED),
+                                    Velocity(velocity_direction * LIGHT_SPEED as f32),
                                     VisibilityBundle::default(),
                                 ));
                             }
@@ -255,7 +255,7 @@ fn spawn_linear_particles(
                                 energy: spawner.particle_energy,
                                 particle_type: ParticleType::Gamma,
                             },
-                            Velocity(velocity_direction * LIGHT_SPEED),
+                            Velocity(velocity_direction * LIGHT_SPEED as f32),
                             VisibilityBundle::default(),
                         ));
                     }
@@ -351,21 +351,28 @@ fn process_particles(
                     {
                         let energy = match particle.particle_type {
                             ParticleType::Gamma => particle.energy,
-                            _ => {
-                                velocity.0.length();
-                                velocity_to_energy(velocity.0.length(), particle.particle_type)
-                            }
+                            _ => velocity_to_energy(velocity.0.length(), particle.particle_type),
                         };
 
-                        // MeV/m or 1/m
+                        // eV/m or 1/m
                         let stopping_power = pick_stopping_power(stopping_powers, energy);
 
-                        let energy_transfer = calculate_energy_transfer(
-                            stopping_power,
-                            particle.particle_type,
-                            energy,
-                            move_step.length(),
-                        );
+                        let energy_transfer = match particle.particle_type {
+                            // gammas either are unaffected or completely gone
+                            ParticleType::Gamma => {
+                                if std::f32::consts::E
+                                    .powf(-1.0 * stopping_power * move_step.length())
+                                    < fastrand::f32()
+                                {
+                                    // transfer all energy if "hit"
+                                    energy
+                                } else {
+                                    // none if no "hit"
+                                    0.0
+                                }
+                            }
+                            _ => stopping_power * move_step.length(),
+                        };
 
                         // add to obstacle
                         if let Some(absorbed_energy) = hit_obstacle {
@@ -393,7 +400,7 @@ fn process_particles(
                     }
                 }
 
-                if particle.energy < 0.1 || velocity.0.length() < 0.1 {
+                if particle.energy < 0.1 || velocity.0.length() < 10.0 {
                     par_commands.command_scope(|mut commands| {
                         commands.entity(entity).despawn();
                     });
@@ -422,10 +429,10 @@ fn energy_to_velocity(energy: f32, particle_type: ParticleType) -> f32 {
         _ => *ALPHA_MASS,
     };
 
-    let k = ((energy * *EV_CONVERSION) / (mass * LIGHT_SPEED_SQ)) + 1.0;
+    let k = ((energy as f64 * *EV_CONVERSION) / (mass * LIGHT_SPEED_SQ)) + 1.0;
     let k_sq = k.powi(2);
 
-    (LIGHT_SPEED * (k_sq - 1.0).sqrt()) / k
+    ((LIGHT_SPEED * (k_sq - 1.0).sqrt()) / k) as f32
 }
 
 fn velocity_to_energy(velocity: f32, particle_type: ParticleType) -> f32 {
@@ -434,28 +441,7 @@ fn velocity_to_energy(velocity: f32, particle_type: ParticleType) -> f32 {
         _ => *ALPHA_MASS,
     };
 
-    let k = 1.0 / (1.0 - (velocity / LIGHT_SPEED).powi(2)).sqrt();
+    let k = 1.0 / (1.0 - (velocity as f64 / LIGHT_SPEED).powi(2)).sqrt();
 
-    (k - 1.0) * mass * LIGHT_SPEED_SQ / *EV_CONVERSION
-}
-
-fn calculate_energy_transfer(
-    stopping_power: f32,
-    particle_type: ParticleType,
-    energy: f32,
-    distance: f32,
-) -> f32 {
-    match particle_type {
-        // gammas either are unaffected or completely gone
-        ParticleType::Gamma => {
-            if std::f32::consts::E.powf(-1.0 * stopping_power * distance) < fastrand::f32() {
-                // transfer all energy if "hit"
-                energy
-            } else {
-                // none if no "hit"
-                0.0
-            }
-        }
-        _ => stopping_power * distance,
-    }
+    ((k - 1.0) * mass * LIGHT_SPEED_SQ / *EV_CONVERSION) as f32
 }

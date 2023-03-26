@@ -66,7 +66,7 @@ pub fn get_elements() -> Vec<Arc<Element>> {
     let mut electron_stopping_power = get_stopping_power(ParticleType::Electron);
     let mut gamma_stopping_power = get_gamma_stopping_power();
 
-    let activity_constant = *AVOGADRO_CONSTANT * 2f32.log(std::f32::consts::E);
+    let activity_constant = *AVOGADRO_CONSTANT * 2f64.log(std::f64::consts::E);
 
     element_data
         .into_iter()
@@ -90,7 +90,8 @@ pub fn get_elements() -> Vec<Arc<Element>> {
 
                         // calculate Bq/g and conver to Bq/kg
                         let activity = half_life.map(|half_life| {
-                            (activity_constant / (half_life * atomic_mass)) * 1_000.0
+                            ((activity_constant / (half_life * atomic_mass) as f64) * 1_000.0)
+                                as f32
                         });
 
                         Some(Isotope {
