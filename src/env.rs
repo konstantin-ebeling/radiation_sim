@@ -211,7 +211,7 @@ fn spawn_experiment(
             ..Default::default()
         },
         LinearSpawner {
-            alpha_rate: 10_000_000_000.0,
+            alpha_rate: 3_000_000_000.0,
             beta_rate: 100_000_000_000.0,
             gamma_rate: 100_000_000_000.0,
             particle_energy: 100_000.0,
