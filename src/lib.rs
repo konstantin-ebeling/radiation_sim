@@ -116,7 +116,7 @@ fn move_camera(
             direction += transform.forward()
                 * ev.y
                 * if cfg!(target_arch = "wasm32") {
-                    0.5
+                    0.2
                 } else {
                     15.0
                 };

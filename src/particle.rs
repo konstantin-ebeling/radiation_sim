@@ -425,7 +425,6 @@ fn energy_to_velocity(energy: f32, particle_type: ParticleType) -> f32 {
     let k = ((energy * *EV_CONVERSION) / (mass * LIGHT_SPEED_SQ)) + 1.0;
     let k_sq = k.powi(2);
 
-    //(LIGHT_SPEED_SQ * (k_sq - 1.0)) / k_sq
     (LIGHT_SPEED * (k_sq - 1.0).sqrt()) / k
 }
 

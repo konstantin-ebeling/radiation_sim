@@ -49,9 +49,6 @@ fn render_main_ui(
 
             ui.label(format!("Äquivalenzdosis: {} mSv", equivalent_dose * 1_000.0));
             ui.label(format!("Äquivalenzdosis/s: {} mSv/s", (equivalent_dose / time_data.time_passed) * 1_000.0));
-            if ui.button("Zurücksetzen").clicked() {
-                reset_event.send_default();
-            }
         } else if matches!(env_state.0, CurrentEnv::Experiment) {
             ui.heading("Test Objekt Material");
             let mut query = set.p1();
@@ -93,7 +90,7 @@ fn render_main_ui(
                             .speed(0.1),
                     );
                 });
-                spawner.alpha_rate = (10.0f32).powf(beta_rate_log);
+                spawner.beta_rate = (10.0f32).powf(beta_rate_log);
 
                 let mut gamma_rate_log = spawner.gamma_rate.log10();
                 ui.horizontal(|ui| {
@@ -142,6 +139,10 @@ fn render_main_ui(
                 }
             } else if ui.button("Bearbeitung stoppen").clicked() {
                 interface_state.edit_objects = false;
+            }
+
+            if ui.button("Zurücksetzen").clicked() {
+                reset_event.send_default();
             }
 
             ui.separator();

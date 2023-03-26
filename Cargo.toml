@@ -34,5 +34,5 @@ opt-level = 1
 opt-level = 3
 
 [profile.release]
-opt-level = 'z'
+opt-level = 's'
 lto = "thin"
